@@ -1,4 +1,5 @@
 """Module for saving videos and data of an RL agent's trajectories."""
+
 import os
 import pickle
 import re
@@ -6,16 +7,16 @@ from os import path
 from pathlib import Path
 from typing import Type, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
-from gym.wrappers import RecordVideo
+from gymnasium.wrappers.record_video import RecordVideo
 from stable_baselines3.ppo.ppo import PPO
 from stable_baselines3.sac.sac import SAC
 
 from ..types import Obs, RewardlessTrajectories
 
 ALGORITHM = "sac"
-ENVIRONMENT_NAME = "HalfCheetah-v3"
+ENVIRONMENT_NAME = "HalfCheetah-v4"
 USE_REWARD_MODEL = False
 USE_SDE = True
 
@@ -32,7 +33,8 @@ models_path = path.join(script_path, "models_final")
 
 
 def record_videos(
-    algorithm: Union[Type[PPO], Type[SAC]], environment: gym.wrappers.RecordVideo
+    algorithm: Union[Type[PPO], Type[SAC]],
+    environment: RecordVideo,
 ):
     """Record videos of the training environment."""
     obs_dataset: RewardlessTrajectories = {}
@@ -42,11 +44,14 @@ def record_videos(
         if re.search(f"{model_id}_[0-9]", file):
             model = algorithm.load(path.join(models_path, file[:-4]))
 
-            state = environment.reset()
+            state, _ = environment.reset()
             n_step = 0
+
             while n_step < VIDEOS_PER_CHECKPOINT * RECORD_INTERVAL:
                 action, _states = model.predict(state, deterministic=True)
-                next_state, _reward, terminated, _info = environment.step(action)
+                next_state, _reward, terminated, _truncated, _info = environment.step(
+                    action
+                )
 
                 environment.render(mode="rgb_array")
 
@@ -72,7 +77,7 @@ def record_videos(
 
 def main():
     """Run video generation."""
-    env = gym.make(ENVIRONMENT_NAME)
+    env = gym.make(ENVIRONMENT_NAME, render_mode="rgb_array")
     env = RecordVideo(
         env,
         video_folder=path.join(script_path, "..", "static", "videos"),

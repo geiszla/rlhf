@@ -10,14 +10,9 @@ channels:
   - nodefaults
 
 dependencies:
-  - python=3.10.*
-  - mamba
+  - python=3.11.*
   - pip # pip must be mentioned explicitly, or conda-lock will fail
   - poetry=1.*
-  - pytorch=2.*
-  - pytorch-cuda=11.8 # [linux]
-  - pytorch-lightning=2.*
-  - stable-baselines3=1.* # Requires gym==0.21, which cannot be installed using pip
 
 platforms:
   - linux-64

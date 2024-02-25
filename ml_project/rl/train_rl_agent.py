@@ -1,4 +1,5 @@
 """Module for training an RL agent."""
+
 # ruff: noqa: E402
 # pylint: disable=wrong-import-position
 import os
@@ -19,8 +20,8 @@ from ..reward_model.networks import LightningTrajectoryNetwork
 from ..reward_model.networks_old import LightningRNNNetwork
 
 ALGORITHM = "sac"  # "ppo" or "sac"
-ENVIRONMENT_NAME = "HalfCheetah-v3"
-REWARD_MODEL = "mlp_finetuned"  # "mlp_single", "mlp", "mlp_finetuned", "rnn" or None
+ENVIRONMENT_NAME = "HalfCheetah-v4"
+REWARD_MODEL = None  # "mlp_single", "mlp", "mlp_finetuned", "rnn" or None
 USE_SDE = True
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -119,5 +120,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()

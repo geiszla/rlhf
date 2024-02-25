@@ -22,29 +22,30 @@ pretrain_reward = "ml_project.reward_model.pretrain_reward_model:main"
 finetune_reward = "ml_project.reward_model.finetune_reward_model:main"
 
 [tool.poetry.dependencies]
-python = "~3.10"
-flask = "^2.3.2"
-numpy = "^1.24.3"
-optuna = "^3.1.1"
-ray = { extras = ["tune"], version = "^2.4.0" }
-tensorboard = "^2.13"
-# Exact versions are required for gym==0.21 (stable-baselines3 dependency)
-mujoco = "2.2"
-mujoco_py = "<2.2,>=2.1"
-imageio = ">=2.14.1"
-# Required for Ray
-protobuf = "<=3.20"
+flask = "^3.0.2"
+mujoco = "^3.1.2"
+numpy = "^1.26.4"
+optuna = "^3.5.0"
+python = "~3.11"
+pytorch-lightning = "^2.2.0.post0"
+ray = { extras = ["tune"], version = "^2.9.3" }
+stable-baselines3 = "^2.2.1"
+tensorboard = "^2.16.2"
+torch = "^2.2.1"
+imitation = "^1.0.0"
+gymnasium = "^0.29.1"
+# Required for moviepy
+moviepy = "^1.0.3"
 
 [tool.poetry.group.dev.dependencies]
-black = "^23.3.0"
-conda-lock = "^1.4.0"
-pre-commit = "^3.3.1"
+black = "^24.2.0"
+conda-lock = "^2.5.5"
+pre-commit = "^3.6.2"
 pydocstyle = "^6.3.0"
-pylint = "^2.17.3"
-pyright = "^1.1.306"
-ruff = "^0.0.264"
-# Need to fix this, otherwise Poetry upgrades it and breaks itself
-urllib3 = "<2"
+pylint = "^3.0.4"
+pyright = "^1.1.351"
+ruff = "^0.2.2"
+torch-tb-profiler = "^0.4.3"
 
 [build-system]
 requires = ["poetry-core"]
@@ -54,7 +55,7 @@ build-backend = "poetry.core.masonry.api"
 line-length = 88
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 pythonPlatform = "All"
 
 include = ["ml_project"]
