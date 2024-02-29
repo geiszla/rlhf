@@ -20,7 +20,7 @@ from ..reward_model.networks import LightningTrajectoryNetwork
 from ..reward_model.networks_old import LightningRNNNetwork
 
 ALGORITHM = "sac"  # "ppo" or "sac"
-ENVIRONMENT_NAME = "HalfCheetah-v4"
+ENVIRONMENT_NAME = "HalfCheetah-v3"
 REWARD_MODEL = None  # "mlp_single", "mlp", "mlp_finetuned", "rnn" or None
 USE_SDE = True
 
