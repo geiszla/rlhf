@@ -32,9 +32,12 @@ ObservationT = TypeVar(
 ActionNumpyT = TypeVar("ActionNumpyT", bound=numpy.generic)
 
 
-class Feedback(TypedDict, Generic[ObservationT]):
+class Feedback(TypedDict, Generic[ObservationT, ActionNumpyT]):
     """Type for the generated feedback."""
 
+    action: NDArray[ActionNumpyT]
     observations: ObservationT
     reward: float
-    value: float
+
+    expert_value: float
+    expert_action: NDArray[ActionNumpyT]

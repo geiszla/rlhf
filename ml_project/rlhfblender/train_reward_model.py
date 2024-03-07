@@ -17,7 +17,7 @@ def main():
         path.join(
             script_path,
             "feedback",
-            f"{MODEL_ID}-evaluative.pkl",
+            f"{MODEL_ID}.pkl",
         ),
         "rb",
     ) as feedback_file:

@@ -41,7 +41,7 @@ def generate_feedback(
     environment: gym.Env[ObservationT, NDArray[ActionNumpyT]],
 ):
     """Generate agent's observations and feedback on them in the training environment."""
-    feedback: list[Feedback[ObservationT]] = []
+    feedback: list[Feedback[ObservationT, ActionNumpyT]] = []
     model_count = 0
 
     for file in os.listdir(checkpoints_path):
@@ -70,13 +70,18 @@ def generate_feedback(
 
             with torch.no_grad():
                 expert_value = expert_model.policy.predict_values(observation_array)[0]
+                expert_action, _states = expert_model.predict(
+                    observations, deterministic=True
+                )
 
             # Add feedback to the list
             feedback.append(
                 {
+                    "action": action,
                     "observations": observations,
                     "reward": reward,
-                    "value": expert_value.item(),
+                    "expert_value": expert_value.item(),
+                    "expert_action": expert_action,
                 }
             )
 
@@ -112,7 +117,7 @@ def main():
         path.join(
             script_path,
             "feedback",
-            f"{MODEL_ID}-evaluative.pkl",
+            f"{MODEL_ID}.pkl",
         ),
         "wb",
     ) as feedback_file:
