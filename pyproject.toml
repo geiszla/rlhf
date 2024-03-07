@@ -21,6 +21,9 @@ generate_reward = "ml_project.rl.generate_reward_data:main"
 pretrain_reward = "ml_project.reward_model.pretrain_reward_model:main"
 finetune_reward = "ml_project.reward_model.finetune_reward_model:main"
 
+feedback = "ml_project.rlhfblender.generate_feedback:main"
+reward = "ml_project.rlhfblender.train_reward_model:main"
+
 [tool.poetry.dependencies]
 python = "~3.11"
 # Required for mujoco-py to compile properly

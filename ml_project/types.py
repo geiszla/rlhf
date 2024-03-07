@@ -1,6 +1,6 @@
 """Common types for all scripts in the project."""
 
-from typing import TypedDict
+from typing import Generic, TypedDict, TypeVar, Union
 
 import numpy
 from numpy.typing import NDArray
@@ -24,3 +24,17 @@ TensorBatch = list[tuple[Tensor, Tensor]]
 Obs = FloatNDArray
 RewardlessTrajectory = list[Obs]
 RewardlessTrajectories = dict[int, RewardlessTrajectory]
+
+# Feedback
+ObservationT = TypeVar(
+    "ObservationT", bound=Union[numpy.ndarray, dict[str, numpy.ndarray]]
+)
+ActionNumpyT = TypeVar("ActionNumpyT", bound=numpy.generic)
+
+
+class Feedback(TypedDict, Generic[ObservationT]):
+    """Type for the generated feedback."""
+
+    observations: ObservationT
+    reward: float
+    value: float
