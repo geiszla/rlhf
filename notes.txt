@@ -1,0 +1,6 @@
+- How to do descriptive feedback?
+
+Later:
+- Generate feedback by averaging multipl predictions (not just using one observation)
+- Could use pretraining with ground-truth rewards for better performance
+- Create a general workflow to integrate arbitrary environments

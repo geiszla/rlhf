@@ -1,4 +1,5 @@
 """Module for instantiating a neural network."""
+
 # pylint: disable=arguments-differ
 from typing import Type, Union
 
@@ -87,7 +88,6 @@ class LightningTrajectoryNetwork(LightningModule):
             if isinstance(layer, nn.Linear):
                 nn.init.orthogonal_(layer.weight)
 
-                layer.bias.data.zero_()
                 layer.bias.data.zero_()
 
     def forward(self, batch: Tensor):
