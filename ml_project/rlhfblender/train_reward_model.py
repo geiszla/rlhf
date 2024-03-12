@@ -4,7 +4,8 @@ import math
 import pickle
 from os import path
 from pathlib import Path
-from typing import Union
+from random import randint
+from typing import Literal, Union
 
 import numpy
 import torch
@@ -13,11 +14,23 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from torch.utils.data import DataLoader, Dataset, random_split
 
-from ..reward_model.networks_old import LightningNetwork
+from ..reward_model.networks_old import (
+    LightningNetwork,
+    calculate_mse_loss,
+    calculate_single_reward_loss,
+)
 from ..types import Feedback
 from .common import MODEL_ID, cpu_count
 
-FEEDBACK_TYPE = "evaluative"
+FeedbackType = Union[
+    Literal["evaluative"],
+    Literal["comparative"],
+    Literal["corrective"],
+    Literal["demonstrative"],
+    Literal["descriptive"],
+]
+
+FEEDBACK_TYPE: FeedbackType = "comparative"
 
 script_path = Path(__file__).parent.resolve()
 
@@ -28,25 +41,52 @@ torch.set_float32_matmul_precision("high")
 class FeedbackDataset(Dataset):
     """PyTorch Dataset for loading the feedback data."""
 
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str, feedback_type: FeedbackType):
         """Initialize dataset."""
         with open(dataset_path, "rb") as feedback_file:
             feedback_list: list[Feedback] = pickle.load(feedback_file)
 
-        self.data = [
-            feedback["observations"].astype("float32") for feedback in feedback_list
-        ]
-        self.target = [
-            numpy.float32(feedback["expert_value"]) for feedback in feedback_list
-        ]
+        match feedback_type:
+            case "evaluative":
+                # First: Observations, Second: Reward
+                self.first = [
+                    feedback["observations"].astype("float32")
+                    for feedback in feedback_list
+                ]
+                self.second = [
+                    numpy.float32(feedback["expert_value"])
+                    for feedback in feedback_list
+                ]
+            case "comparative":
+                # First: high-reward observations, Second: low-reward observations
+                observation_pairs = [
+                    map(
+                        lambda feedback: feedback["observations"].astype("float32"),
+                        sorted(
+                            list(
+                                (
+                                    feedback_list[randint(0, len(feedback_list) - 1)],
+                                    feedback_list[randint(0, len(feedback_list) - 1)],
+                                )
+                            ),
+                            key=lambda feedback: feedback["expert_value"],
+                            reverse=True,
+                        ),
+                    )
+                    for _ in range(len(feedback_list))
+                ]
+
+                self.first, self.second = zip(*observation_pairs)
+            case _:
+                raise NotImplementedError("Dataset for feedback type not implemented.")
 
     def __len__(self):
         """Return size of dataset."""
-        return len(self.data)
+        return len(self.first)
 
     def __getitem__(self, index):
         """Return item with given index."""
-        return self.data[index], self.target[index]
+        return self.first[index], self.second[index]
 
 
 def train_reward_model(
@@ -102,10 +142,30 @@ def main():
     """Run reward model pre-training."""
 
     # Load data
-    dataset = FeedbackDataset(path.join(script_path, "feedback", f"{MODEL_ID}.pkl"))
+    dataset = FeedbackDataset(
+        path.join(script_path, "feedback", f"{MODEL_ID}.pkl"), FEEDBACK_TYPE
+    )
 
+    # Select loss function based on feedback type
+    loss_function = None
+
+    match FEEDBACK_TYPE:
+        case "evaluative":
+            loss_function = calculate_mse_loss
+        case "comparative":
+            loss_function = calculate_single_reward_loss
+        case _:
+            raise NotImplementedError(
+                "Loss function for feedback type not implemented."
+            )
+
+    # Train reward model
     reward_model = LightningNetwork(
-        input_dim=17, hidden_dim=256, layer_num=12, output_dim=1
+        input_dim=17,
+        hidden_dim=256,
+        layer_num=12,
+        output_dim=1,
+        loss_function=loss_function,
     )
 
     train_reward_model(reward_model, dataset, epochs=100, batch_size=4)

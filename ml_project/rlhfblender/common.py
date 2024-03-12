@@ -3,8 +3,9 @@
 import os
 from os import path
 from pathlib import Path
+from typing import Literal, Union
 
-ALGORITHM = "sac"  # "ppo" or "sac"
+ALGORITHM: Union[Literal["sac"], Literal["ppo"]] = "sac"
 ENVIRONMENT_NAME = "HalfCheetah-v3"
 USE_REWARD_MODEL = False
 USE_SDE = True
