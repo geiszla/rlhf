@@ -22,6 +22,7 @@ pretrain_reward = "ml_project.reward_model.pretrain_reward_model:main"
 finetune_reward = "ml_project.reward_model.finetune_reward_model:main"
 
 feedback = "ml_project.rlhfblender.generate_feedback:main"
+descriptive_feedback = "ml_project.rlhfblender.generate_descriptive_feedback:main"
 reward = "ml_project.rlhfblender.train_reward_model:main"
 
 [tool.poetry.dependencies]
@@ -42,6 +43,7 @@ shimmy = "^1.3.0"
 stable-baselines3 = "^2.2.1"
 tensorboard = "^2.16.2"
 torch = "^2.2.1"
+captum = "^0.7.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.2.0"
