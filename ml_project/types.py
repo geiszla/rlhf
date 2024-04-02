@@ -1,6 +1,6 @@
 """Common types for all scripts in the project."""
 
-from typing import Generic, TypedDict, TypeVar, Union
+from typing import Generic, Literal, TypedDict, TypeVar, Union
 
 import numpy
 from numpy.typing import NDArray
@@ -41,3 +41,12 @@ class Feedback(TypedDict, Generic[ObservationT, ActionNumpyT]):
 
     expert_value: float
     expert_action: NDArray[ActionNumpyT]
+
+
+FeedbackType = Union[
+    Literal["evaluative"],
+    Literal["comparative"],
+    Literal["corrective"],
+    Literal["demonstrative"],
+    Literal["descriptive"],
+]

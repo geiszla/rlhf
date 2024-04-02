@@ -103,22 +103,18 @@ def main():
 
     # Select agent algorithm
     if ALGORITHM == "sac":
-        ALGO = SAC
+        model_class = SAC
     elif ALGORITHM == "ppo":
-        ALGO = PPO
+        model_class = PPO
     else:
         raise NotImplementedError(f"{ALGORITHM} not implemented")
 
     # Generate feedback
-    feedback = generate_feedback(ALGO, env)
+    feedback = generate_feedback(model_class, env)
 
     # Save feedback
     with open(
-        path.join(
-            script_path,
-            "feedback",
-            f"{MODEL_ID}.pkl",
-        ),
+        path.join(script_path, "feedback", f"{MODEL_ID}.pkl"),
         "wb",
     ) as feedback_file:
         pickle.dump(feedback, feedback_file, protocol=pickle.HIGHEST_PROTOCOL)

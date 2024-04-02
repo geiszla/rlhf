@@ -5,7 +5,7 @@ import pickle
 from os import path
 from pathlib import Path
 from random import randint
-from typing import Literal, Union
+from typing import Union
 
 import numpy
 import torch
@@ -19,16 +19,8 @@ from ..reward_model.networks_old import (
     calculate_mse_loss,
     calculate_single_reward_loss,
 )
-from ..types import Feedback
+from ..types import Feedback, FeedbackType
 from .common import MODEL_ID, cpu_count
-
-FeedbackType = Union[
-    Literal["evaluative"],
-    Literal["comparative"],
-    Literal["corrective"],
-    Literal["demonstrative"],
-    Literal["descriptive"],
-]
 
 FEEDBACK_TYPE: FeedbackType = "comparative"
 
@@ -78,7 +70,9 @@ class FeedbackDataset(Dataset):
 
                 self.first, self.second = zip(*observation_pairs)
             case _:
-                raise NotImplementedError("Dataset for feedback type not implemented.")
+                raise NotImplementedError(
+                    "Dataset not implemented for this feedback type ."
+                )
 
     def __len__(self):
         """Return size of dataset."""
@@ -139,7 +133,7 @@ def train_reward_model(
 
 
 def main():
-    """Run reward model pre-training."""
+    """Run reward model training."""
 
     # Load data
     dataset = FeedbackDataset(
@@ -156,7 +150,7 @@ def main():
             loss_function = calculate_single_reward_loss
         case _:
             raise NotImplementedError(
-                "Loss function for feedback type not implemented."
+                "Loss function not implemented for this feedback type."
             )
 
     # Train reward model
