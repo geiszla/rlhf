@@ -69,6 +69,16 @@ class FeedbackDataset(Dataset):
                 ]
 
                 self.first, self.second = zip(*observation_pairs)
+            case "corrective":
+                # First: Corrected observations, Second: Agent's observations
+                self.first = [
+                    feedback["expert_observation"].astype("float32")
+                    for feedback in feedback_list
+                ]
+                self.second = [
+                    feedback["observations"].astype("float32")
+                    for feedback in feedback_list
+                ]
             case _:
                 raise NotImplementedError(
                     "Dataset not implemented for this feedback type ."
@@ -147,6 +157,8 @@ def main():
         case "evaluative":
             loss_function = calculate_mse_loss
         case "comparative":
+            loss_function = calculate_single_reward_loss
+        case "corrective":
             loss_function = calculate_single_reward_loss
         case _:
             raise NotImplementedError(

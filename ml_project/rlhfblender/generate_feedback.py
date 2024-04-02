@@ -3,6 +3,7 @@
 import os
 import pickle
 import re
+from copy import deepcopy
 from os import path
 from typing import Type, Union
 
@@ -59,9 +60,11 @@ def generate_feedback(
         for _ in range(STEPS_PER_CHECKPOINT):
             # Get predicted actions and observations/rewards after taking the action
             action, _states = model.predict(observations, deterministic=True)
-            observations, reward, terminated, _truncated, _info = environment.step(
-                action
-            )
+
+            # Note: his is very slow, might worth targetting mujoco and
+            # using env.set_state instead
+            # See https://github.com/openai/mujoco-py/blob/master/examples/setting_state.py
+            environment_copy = deepcopy(environment)
 
             # Get value from value function of the expert
             observation_array = expert_model.policy.obs_to_tensor(
@@ -74,6 +77,17 @@ def generate_feedback(
                     observations, deterministic=True
                 )
 
+            # Take the expert's action
+            expert_observation, reward, terminated, _truncated, _info = (
+                environment.step(expert_action)
+            )
+
+            # Restore environment state, then take the agent's action
+            environment = environment_copy
+            observations, reward, terminated, _truncated, _info = environment.step(
+                action
+            )
+
             # Add feedback to the list
             feedback.append(
                 {
@@ -82,6 +96,7 @@ def generate_feedback(
                     "reward": reward,
                     "expert_value": expert_value.item(),
                     "expert_action": expert_action,
+                    "expert_observation": expert_observation,
                 }
             )
 
