@@ -26,9 +26,8 @@ RewardlessTrajectory = list[Obs]
 RewardlessTrajectories = dict[int, RewardlessTrajectory]
 
 # Feedback
-ObservationT = TypeVar(
-    "ObservationT", bound=Union[numpy.ndarray, dict[str, numpy.ndarray]]
-)
+ObservationType = Union[numpy.ndarray, dict[str, numpy.ndarray]]
+ObservationT = TypeVar("ObservationT", bound=ObservationType)
 ActionNumpyT = TypeVar("ActionNumpyT", bound=numpy.generic)
 
 
@@ -41,7 +40,8 @@ class Feedback(TypedDict, Generic[ObservationT, ActionNumpyT]):
 
     expert_value: float
     expert_action: NDArray[ActionNumpyT]
-    expert_observation: ObservationT
+    expert_observations: ObservationT
+    expert_value_attributions: NDArray[numpy.float64]
 
 
 FeedbackType = Union[

@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader, Dataset, random_split
 
 from ..reward_model.networks_old import (
     LightningNetwork,
+    calculate_mle_loss,
     calculate_mse_loss,
-    calculate_single_reward_loss,
 )
 from ..types import Feedback, FeedbackType
 from .common import MODEL_ID, cpu_count
@@ -69,14 +69,34 @@ class FeedbackDataset(Dataset):
                 ]
 
                 self.first, self.second = zip(*observation_pairs)
-            case "corrective":
-                # First: Corrected observations, Second: Agent's observations
+            case "corrective" | "demonstrative":
+                # First: Expert's observations, Second: Agent's observations
                 self.first = [
-                    feedback["expert_observation"].astype("float32")
+                    feedback["expert_observations"].astype("float32")
                     for feedback in feedback_list
                 ]
                 self.second = [
                     feedback["observations"].astype("float32")
+                    for feedback in feedback_list
+                ]
+            case "descriptive":
+                # First: Changed observations, Second: Agent's observations
+                # TODO: generate more perturbation for one feedback
+                # TODO: take mean of the observations to get noise range
+                for feedback in feedback_list:
+                    feedback["observations"][
+                        feedback["expert_value_attributions"] < 0
+                    ] += numpy.random.normal(
+                        -1, 1, (feedback["expert_value_attributions"] < 0).sum()
+                    )
+
+                # First: Observations, Second: Reward
+                self.first = [
+                    feedback["observations"].astype("float32")
+                    for feedback in feedback_list
+                ]
+                self.second = [
+                    numpy.float32(feedback["expert_value"])
                     for feedback in feedback_list
                 ]
             case _:
@@ -154,12 +174,10 @@ def main():
     loss_function = None
 
     match FEEDBACK_TYPE:
-        case "evaluative":
+        case "evaluative" | "descriptive":
             loss_function = calculate_mse_loss
-        case "comparative":
-            loss_function = calculate_single_reward_loss
-        case "corrective":
-            loss_function = calculate_single_reward_loss
+        case "comparative" | "corrective" | "demonstrative":
+            loss_function = calculate_mle_loss
         case _:
             raise NotImplementedError(
                 "Loss function not implemented for this feedback type."

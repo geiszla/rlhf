@@ -14,7 +14,7 @@ def calculate_mse_loss(network: LightningModule, batch: Tensor):
     return mse_loss(network(batch[0]), batch[1].unsqueeze(1), reduction="sum")
 
 
-def calculate_single_reward_loss(network: LightningModule, batch: Tensor):
+def calculate_mle_loss(network: LightningModule, batch: Tensor):
     """Calculate the maximum likelihood loss for the better trajectory."""
     rewards1 = network(batch[0]).flatten()
     rewards2 = network(batch[1]).flatten()
@@ -79,14 +79,14 @@ class LightningRNNNetwork(LightningModule):
 
     def training_step(self, batch: Tensor, _batch_idx: int):
         """Compute the loss for training."""
-        loss = calculate_single_reward_loss(self, batch)
+        loss = calculate_mle_loss(self, batch)
         self.log("train_loss", loss, prog_bar=True)
 
         return loss
 
     def validation_step(self, batch: Tensor, _batch_idx: int):
         """Compute the loss for validation."""
-        loss = calculate_single_reward_loss(self, batch)
+        loss = calculate_mle_loss(self, batch)
         self.log("val_loss", loss, prog_bar=True)
 
     def configure_optimizers(self):
