@@ -26,8 +26,6 @@ from .common import (
     script_path,
 )
 
-TARGET_NEURON = 0
-
 # Load the pretrained "expert" model
 expert_model = PPO.load(
     path.join(
@@ -78,8 +76,7 @@ def get_attributions(
         (
             explainer.attribute(
                 observations_input,
-                # TODO: target set of neurons
-                target=TARGET_NEURON,
+                target=0,
                 baselines=observations_baseline,
                 internal_batch_size=64,
             )

@@ -4,7 +4,7 @@ import math
 import pickle
 from os import path
 from pathlib import Path
-from random import randint
+from random import randint, randrange
 from typing import Union
 
 import numpy
@@ -23,9 +23,16 @@ from ..reward_model.networks_old import (
     calculate_mse_loss,
 )
 from ..types import Feedback, FeedbackType
-from .common import MODEL_ID, cpu_count
+from .common import (
+    ALGORITHM,
+    ENVIRONMENT_NAME,
+    MODEL_ID,
+    USE_REWARD_MODEL,
+    USE_SDE,
+    cpu_count,
+)
 
-FEEDBACK_TYPE: FeedbackType = "comparative"
+FEEDBACK_TYPE: FeedbackType = "descriptive"
 
 script_path = Path(__file__).parent.resolve()
 
@@ -38,6 +45,8 @@ class FeedbackDataset(Dataset):
 
     def __init__(self, dataset_path: str, feedback_type: FeedbackType):
         """Initialize dataset."""
+        print("Loading dataset...")
+
         with open(dataset_path, "rb") as feedback_file:
             feedback_list: list[Feedback] = pickle.load(feedback_file)
 
@@ -85,13 +94,23 @@ class FeedbackDataset(Dataset):
             case "descriptive":
                 # First: Changed observations, Second: Agent's observations
                 # TODO: generate more perturbation for one feedback
-                # TODO: take mean of the observations to get noise range
+                all_observations = numpy.array(
+                    list(map(lambda feedback: feedback["observations"], feedback_list))
+                )
+
+                standard_deviations = numpy.std(all_observations, axis=0)
+
                 for feedback in feedback_list:
-                    feedback["observations"][
-                        feedback["expert_value_attributions"] < 0
-                    ] += numpy.random.normal(
-                        -1, 1, (feedback["expert_value_attributions"] < 0).sum()
+                    # Question: are we generating perturbations or new values here
+                    # (i.e., should mean be 0)?
+                    perturbations = numpy.random.normal(
+                        0, standard_deviations, feedback["observations"].shape
                     )
+
+                    # TODO: regenerate feedback with flat array and remove the 0 index from here
+                    perturbations[feedback["expert_value_attributions"][0] > 0] = 0
+
+                    feedback["observations"] += perturbations
 
                 # First: Observations, Second: Reward
                 self.first = [
@@ -107,6 +126,8 @@ class FeedbackDataset(Dataset):
                     "Dataset not implemented for this feedback type ."
                 )
 
+        print("Dataset loaded")
+
     def __len__(self):
         """Return size of dataset."""
         return len(self.first)
@@ -121,6 +142,7 @@ def train_reward_model(
     dataset: FeedbackDataset,
     epochs: int,
     batch_size: int,
+    gradient_clip_value: float = 0,
     split_ratio: float = 0.8,
     enable_progress_bar=True,
     callback: Union[Callback, None] = None,
@@ -143,22 +165,36 @@ def train_reward_model(
         val_set, batch_size=batch_size, pin_memory=True, num_workers=cpu_count
     )
 
+    run_name = "_".join([MODEL_ID, FEEDBACK_TYPE, str(randrange(0, 10000))])
+
     checkpoint_callback = ModelCheckpoint(
         dirpath=path.join(script_path, "reward_model_checkpoints"),
-        filename="_".join([MODEL_ID, FEEDBACK_TYPE]),
+        filename=run_name,
         monitor="val_loss",
     )
 
     # initialise the wandb logger and name your wandb project
-    wandb_logger = WandbLogger(project="Masters Thesis")
+    wandb_logger = WandbLogger(project="Masters Thesis", name=run_name)
 
     # add your batch size to the wandb config
-    wandb_logger.experiment.config["max_epochs"] = epochs
-    wandb_logger.experiment.config["batch_size"] = batch_size
+    wandb_logger.experiment.config.update(
+        {
+            "rl_algorithm": ALGORITHM,
+            "rl_environment": ENVIRONMENT_NAME,
+            "rl_is_use_sde": USE_SDE,
+            "rl_is_finetuned": USE_REWARD_MODEL,
+            "rl_feedback_type": FEEDBACK_TYPE,
+            "max_epochs": epochs,
+            "batch_size": batch_size,
+            "gradient_clip_value": gradient_clip_value,
+            "learning_rate": reward_model.learning_rate,
+        }
+    )
 
     trainer = Trainer(
         max_epochs=epochs,
         log_every_n_steps=5,
+        gradient_clip_val=gradient_clip_value,
         enable_progress_bar=enable_progress_bar,
         logger=wandb_logger,
         callbacks=[
@@ -203,6 +239,7 @@ def main():
         layer_num=12,
         output_dim=1,
         loss_function=loss_function,
+        learning_rate=2e-5,
     )
 
     train_reward_model(reward_model, dataset, epochs=100, batch_size=4)
