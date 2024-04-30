@@ -12,7 +12,10 @@ import torch
 from pytorch_lightning import Callback, LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, Dataset, random_split
+
+import wandb
 
 from ..reward_model.networks_old import (
     LightningNetwork,
@@ -146,10 +149,18 @@ def train_reward_model(
         monitor="val_loss",
     )
 
+    # initialise the wandb logger and name your wandb project
+    wandb_logger = WandbLogger(project="Masters Thesis")
+
+    # add your batch size to the wandb config
+    wandb_logger.experiment.config["max_epochs"] = epochs
+    wandb_logger.experiment.config["batch_size"] = batch_size
+
     trainer = Trainer(
         max_epochs=epochs,
         log_every_n_steps=5,
         enable_progress_bar=enable_progress_bar,
+        logger=wandb_logger,
         callbacks=[
             EarlyStopping(monitor="val_loss", mode="min"),
             checkpoint_callback,
@@ -158,6 +169,8 @@ def train_reward_model(
     )
 
     trainer.fit(reward_model, train_loader, val_loader)
+
+    wandb.finish()
 
     return reward_model
 

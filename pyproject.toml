@@ -44,6 +44,7 @@ stable-baselines3 = "^2.2.1"
 tensorboard = "^2.16.2"
 torch = "^2.2.1"
 captum = "^0.7.0"
+wandb = "^0.16.6"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.2.0"

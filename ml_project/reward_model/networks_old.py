@@ -134,7 +134,8 @@ class LightningNetwork(LightningModule):
                 nn.init.orthogonal_(layer.weight)
 
                 layer.bias.data.zero_()
-                layer.bias.data.zero_()
+
+        self.save_hyperparameters()
 
     def forward(self, batch: Tensor):
         """Do a forward pass through the neural network (inference)."""
@@ -143,7 +144,10 @@ class LightningNetwork(LightningModule):
 
     def training_step(self, batch: Tensor):
         """Compute the loss for training."""
-        return self.loss_function(self, batch)
+        loss = self.loss_function(self, batch)
+        self.log("train_loss", loss, prog_bar=True)
+
+        return loss
 
     def validation_step(self, batch: Tensor, _batch_idx: int):
         """Compute the loss for validation."""
@@ -195,7 +199,6 @@ class Network(nn.Module):
                 nn.init.orthogonal_(layer.weight)
 
                 layer.bias.data.zero_()
-                layer.bias.data.zero_()
 
     def forward(self, data: Tensor):
         """Do a forward pass through the neural network (inference)."""
@@ -209,6 +212,4 @@ class Network(nn.Module):
         for layer in self.modules():
             if isinstance(layer, nn.Linear):
                 nn.init.orthogonal_(layer.weight)
-                layer.bias.data.zero_()
-                layer.bias.data.zero_()
                 layer.bias.data.zero_()

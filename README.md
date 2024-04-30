@@ -19,6 +19,7 @@ This is the repository for the AI Center Projects in Machine Learning Research c
 ### Installing dependencies
 
 1. Install [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html) (Mamba, Anaconda, or Miniconda also works, but is not necessary)
+1. Add `alias mamba='micromamba'` to your shell profile (e.g., to the end of `~/.bashrc` or `~/.zshrc` or similar) to be able to use the `mamba` command.
 1. Navigate to the project directory, then run `mamba create --name ml_project --file conda-<linux/osx>-64.lock` (replace `<linux/osx>` with your OS) to create the Mamba environment.
 1. Run `mamba activate ml_project` to activate the virtual environment.
 1. Run `poetry install` in the project directory to install dependencies of the project.
@@ -42,6 +43,10 @@ This is the repository for the AI Center Projects in Machine Learning Research c
 
 1. Run `mamba activate ml_project` to activate the Mamba environment.
 1. It's recommended to set up the extensions in your IDE equivalent to those listed above in the VSCode setup section for a more convenient development.
+
+## Downloading the expert model
+
+To download the expert model, run `python -m rl_zoo3.load_from_hub --algo ppo --env HalfCheetah-v3 -orga sb3 -f logs/` after activating the mamba environment.
 
 ## Managing dependencies
 
