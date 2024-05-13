@@ -200,6 +200,7 @@ data/
 logs/
 videos/
 wandb/
+nohup.out
 
 # Too large for GitHub
 rlhfblender/feedback/

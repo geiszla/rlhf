@@ -21,17 +21,23 @@ generate_reward = "ml_project.rl.generate_reward_data:main"
 pretrain_reward = "ml_project.reward_model.pretrain_reward_model:main"
 finetune_reward = "ml_project.reward_model.finetune_reward_model:main"
 
-feedback = "ml_project.rlhfblender.generate_feedback:main"
-descriptive_feedback = "ml_project.rlhfblender.generate_descriptive_feedback:main"
-reward = "ml_project.rlhfblender.train_reward_model:main"
+# RLHF Blender
+generate_feedback = "ml_project.rlhfblender.generate_feedback:main"
+train_reward = "ml_project.rlhfblender.train_reward_model:main"
+plot_reward = "ml_project.rlhfblender.plot_reward_model_output:main"
+train_agent = "ml_project.rlhfblender.train_agent:main"
+export_videos = "ml_project.rlhfblender.export_videos:main"
 
 [tool.poetry.dependencies]
 python = "~3.11"
+captum = "^0.7.0"
 # Required for mujoco-py to compile properly
 cython = "<3"
 flask = "^3.0.2"
 gym = "^0.26.2"
 imitation = "^1.0.0"
+# Required to export videos of RL environments
+moviepy = "^1.0.3"
 mujoco-py = "^2.1.2.14"
 numpy = "^1.26.4"
 optuna = "^3.5.0"
@@ -43,7 +49,6 @@ shimmy = "^1.3.0"
 stable-baselines3 = "^2.2.1"
 tensorboard = "^2.16.2"
 torch = "^2.2.1"
-captum = "^0.7.0"
 wandb = "^0.16.6"
 
 [tool.poetry.group.dev.dependencies]

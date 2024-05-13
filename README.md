@@ -46,7 +46,7 @@ This is the repository for the AI Center Projects in Machine Learning Research c
 
 ## Downloading the expert model
 
-To download the expert model, run `python -m rl_zoo3.load_from_hub --algo ppo --env HalfCheetah-v3 -orga sb3 -f logs/` after activating the mamba environment.
+To download the expert model, run `python -m rl_zoo3.load_from_hub --algo sac --env HalfCheetah-v3 -orga sb3 -f logs/` after activating the mamba environment.
 
 ## Managing dependencies
 

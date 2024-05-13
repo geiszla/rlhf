@@ -18,6 +18,7 @@ from .common import (
     ALGORITHM,
     DEVICE,
     ENVIRONMENT_NAME,
+    FEEDBACK_TYPE,
     MODEL_ID,
     USE_SDE,
     checkpoints_path,
@@ -26,16 +27,16 @@ from .common import (
 )
 
 # Set feedback type to None to not use the custom reward model
-FEEDBACK_TYPE: Union[FeedbackType, None] = "comparative"
+TRAINING_FEEDBACK_TYPE: Union[FeedbackType, None] = FEEDBACK_TYPE
 
 tensorboard_path = path.join(script_path, "..", "..", "rl_logs")
 
 REWARD_MODEL_ID = "_".join(
-    [MODEL_ID, *([FEEDBACK_TYPE] if FEEDBACK_TYPE is not None else [])]
+    [MODEL_ID, *([FEEDBACK_TYPE] if FEEDBACK_TYPE is not None else []), str(3653)]
 )
 
 reward_model_path = path.join(
-    script_path, "..", "reward_model", "models_final", f"{REWARD_MODEL_ID}.ckpt"
+    script_path, "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
 )
 
 
@@ -46,9 +47,7 @@ class CustomReward(RewardFn):
         """Initialize custom reward."""
         super().__init__()
 
-        # self.reward_model = LightningNetwork.load_from_checkpoint(
-        #     reward_model_path, input_dim=17, hidden_dim=256, layer_num=12, output_dim=1
-        # )
+        # pylint: disable=no-value-for-parameter
         self.reward_model = LightningNetwork.load_from_checkpoint(
             checkpoint_path=reward_model_path
         )
@@ -61,7 +60,7 @@ class CustomReward(RewardFn):
         _done: np.ndarray,
     ) -> list:
         """Return reward given the current state."""
-        rewards = self.reward_model(torch.Tensor(state).to(DEVICE).unsqueeze(0))
+        rewards = self.reward_model(torch.Tensor(state).to(DEVICE))
 
         return [reward.detach().item() for reward in rewards]
 

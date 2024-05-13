@@ -3,7 +3,6 @@
 import os
 import pickle
 import re
-from copy import deepcopy
 from os import path
 from typing import Type, Union
 
@@ -27,6 +26,7 @@ from .common import (
 )
 
 # Load the pretrained "expert" model
+# PPO
 expert_model = PPO.load(
     path.join(
         script_path, "..", "..", "logs", "ppo", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
@@ -38,10 +38,22 @@ expert_model = PPO.load(
     },
 )
 
+# SAC
+# expert_model = SAC.load(
+#     path.join(
+#         script_path, "..", "..", "logs", "sac", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
+#     ),
+#     custom_objects={
+#         "learning_rate": 0.0,
+#         "lr_schedule": lambda _: 0.0,
+#         "clip_range": lambda _: 0.0,
+#     },
+# )
+
 
 def get_attributions(
     observations: ObservationType,
-    model: PPO,
+    model: Union[PPO, SAC],
     explainer: IntegratedGradients,
 ) -> NDArray[numpy.float64]:
     """
@@ -110,9 +122,9 @@ def generate_feedback(
             custom_objects={"lr_schedule": lambda _: 0.0},
         )
 
+        # PPO
+        # Note: This only works if `share_features_extractor` is True
         explainer = IntegratedGradients(
-            # pylint: disable=cell-var-from-loop
-            # TODO: test if this is correct
             lambda observations: expert_model.policy.value_net(
                 expert_model.policy.mlp_extractor(
                     expert_model.policy.extract_features(observations)
@@ -120,16 +132,18 @@ def generate_feedback(
             )
         )
 
+        # SAC
+        # explainer = IntegratedGradients(expert_model.policy.critic.q1_forward)
+
         observations, _ = environment.reset()
 
         for _ in range(STEPS_PER_CHECKPOINT):
             # Get predicted actions and observations/rewards after taking the action
             action, _states = model.predict(observations, deterministic=True)
 
-            # Note: his is very slow, might worth targetting mujoco and
-            # using env.set_state instead
-            # See https://github.com/openai/mujoco-py/blob/master/examples/setting_state.py
-            environment_copy = deepcopy(environment)
+            # Note: only works with MuJoCo environments
+            # (needs `sim.get_state()` and `sim.set_state()`)
+            state_copy = environment.sim.get_state()  # type: ignore
 
             # Get value from value function of the expert
             observation_array = expert_model.policy.obs_to_tensor(
@@ -143,12 +157,12 @@ def generate_feedback(
                 )
 
             # Take the expert's action
-            expert_observation, reward, terminated, _truncated, _info = (
+            expert_observations, reward, terminated, _truncated, _info = (
                 environment.step(expert_action)
             )
 
             # Restore environment state, then take the agent's action
-            environment = environment_copy
+            environment.sim.set_state(state_copy)  # type: ignore
             observations, reward, terminated, _truncated, _info = environment.step(
                 action
             )
@@ -161,10 +175,10 @@ def generate_feedback(
                     "reward": reward,
                     "expert_value": expert_value.item(),
                     "expert_action": expert_action,
-                    "expert_observations": expert_observation,
+                    "expert_observations": expert_observations,
                     "expert_value_attributions": get_attributions(
-                        expert_observation, expert_model, explainer
-                    ),
+                        expert_observations, expert_model, explainer
+                    )[0],
                 }
             )
 

@@ -26,13 +26,14 @@ from ..types import Feedback, FeedbackType
 from .common import (
     ALGORITHM,
     ENVIRONMENT_NAME,
+    FEEDBACK_TYPE,
     MODEL_ID,
+    STEPS_PER_CHECKPOINT,
     USE_REWARD_MODEL,
     USE_SDE,
     cpu_count,
+    get_reward_model_name,
 )
-
-FEEDBACK_TYPE: FeedbackType = "descriptive"
 
 script_path = Path(__file__).parent.resolve()
 
@@ -82,15 +83,20 @@ class FeedbackDataset(Dataset):
 
                 self.first, self.second = zip(*observation_pairs)
             case "corrective" | "demonstrative":
+                demonstrative_length = (
+                    STEPS_PER_CHECKPOINT if feedback_type == "demonstrative" else None
+                )
+
                 # First: Expert's observations, Second: Agent's observations
                 self.first = [
                     feedback["expert_observations"].astype("float32")
                     for feedback in feedback_list
-                ]
+                ][:demonstrative_length]
+
                 self.second = [
                     feedback["observations"].astype("float32")
                     for feedback in feedback_list
-                ]
+                ][:demonstrative_length]
             case "descriptive":
                 # First: Changed observations, Second: Agent's observations
                 # TODO: generate more perturbation for one feedback
@@ -108,7 +114,7 @@ class FeedbackDataset(Dataset):
                     )
 
                     # TODO: regenerate feedback with flat array and remove the 0 index from here
-                    perturbations[feedback["expert_value_attributions"][0] > 0] = 0
+                    perturbations[feedback["expert_value_attributions"] > 0] = 0
 
                     feedback["observations"] += perturbations
 
@@ -165,7 +171,7 @@ def train_reward_model(
         val_set, batch_size=batch_size, pin_memory=True, num_workers=cpu_count
     )
 
-    run_name = "_".join([MODEL_ID, FEEDBACK_TYPE, str(randrange(0, 10000))])
+    run_name = get_reward_model_name(randrange(0, 10000))
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=path.join(script_path, "reward_model_checkpoints"),
