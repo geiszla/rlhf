@@ -55,7 +55,7 @@ class CustomReward(RewardFn):
     def __call__(
         self,
         state: np.ndarray,
-        _action: np.ndarray,
+        _actions: np.ndarray,
         _next_state: np.ndarray,
         _done: np.ndarray,
     ) -> list:

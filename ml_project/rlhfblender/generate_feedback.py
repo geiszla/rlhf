@@ -15,9 +15,10 @@ from stable_baselines3.ppo.ppo import PPO
 from stable_baselines3.sac.sac import SAC
 from torch import Tensor
 
-from ..types import ActionNumpyT, Feedback, ObservationT, ObservationType
+from ..types import ActionNumpyT, Feedback, ObservationT
 from .common import (
     ALGORITHM,
+    DEVICE,
     ENVIRONMENT_NAME,
     MODEL_ID,
     STEPS_PER_CHECKPOINT,
@@ -27,21 +28,9 @@ from .common import (
 
 # Load the pretrained "expert" model
 # PPO
-expert_model = PPO.load(
-    path.join(
-        script_path, "..", "..", "logs", "ppo", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
-    ),
-    custom_objects={
-        "learning_rate": 0.0,
-        "lr_schedule": lambda _: 0.0,
-        "clip_range": lambda _: 0.0,
-    },
-)
-
-# SAC
-# expert_model = SAC.load(
+# expert_model = PPO.load(
 #     path.join(
-#         script_path, "..", "..", "logs", "sac", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
+#         script_path, "..", "..", "logs", "ppo", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
 #     ),
 #     custom_objects={
 #         "learning_rate": 0.0,
@@ -50,17 +39,29 @@ expert_model = PPO.load(
 #     },
 # )
 
+# SAC
+expert_model = SAC.load(
+    path.join(
+        script_path, "..", "..", "logs", "sac", "HalfCheetah-v3_1", "HalfCheetah-v3.zip"
+    ),
+    custom_objects={
+        "learning_rate": 0.0,
+        "lr_schedule": lambda _: 0.0,
+        "clip_range": lambda _: 0.0,
+    },
+)
+
 
 def get_attributions(
-    observations: ObservationType,
-    model: Union[PPO, SAC],
+    observation: Tensor,
+    actions: NDArray[ActionNumpyT],
     explainer: IntegratedGradients,
 ) -> NDArray[numpy.float64]:
     """
-    Compute attributions for a given set of observations using the provided model and explainer.
+    Compute attributions for a given observation using the provided model and explainer.
 
     Args:
-        observations (ObservationType): The input observations for which to compute attributions.
+        observation (ObservationType): The input observation for which to compute attributions.
         model (PPO): The model used for prediction.
         explainer (IntegratedGradients): The explainer used to compute attributions.
 
@@ -68,40 +69,32 @@ def get_attributions(
         NDArray[numpy.float32]: The computed attributions.
 
     Raises:
-        ValueError: If the observations tensor or observations baseline tensor is not
+        ValueError: If the observation tensor or observation baseline tensor is not
         a torch.Tensor.
     """
-    observations = numpy.array(observations)
-    observations_input = model.policy.obs_to_tensor(observations)[0]
+    observation_baselines = (
+        torch.mean(observation).repeat(observation.shape[-1]).unsqueeze(0)
+    )
 
-    if not isinstance(observations_input, Tensor):
-        raise ValueError("Observations tensor is not a torch.Tensor")
-
-    observations_baseline = model.policy.obs_to_tensor(
-        numpy.repeat(numpy.mean(observations, axis=0), observations.shape[0], axis=0)
-    )[0]
-
-    if not isinstance(observations_baseline, Tensor):
-        raise ValueError("Observations baseline tensor is not a torch.Tensor")
+    actions_tensor = torch.from_numpy(actions).unsqueeze(0).to(DEVICE)
+    actions_baselines = (
+        torch.mean(actions_tensor).repeat(actions.shape[-1]).unsqueeze(0)
+    )
 
     attribution = [
-        (
+        torch.cat(
             explainer.attribute(
-                observations_input,
+                (observation, actions_tensor),
                 target=0,
-                baselines=observations_baseline,
+                baselines=(observation_baselines, actions_baselines),
                 internal_batch_size=64,
-            )
-            .cpu()
-            .detach()
-            .numpy()
+            ),
+            dim=1,
         )
-        for _ in range(0, observations.shape[0], 64)
+        for _ in range(0, observation.shape[0], 64)
     ]
 
-    attribution = numpy.concatenate(attribution, axis=0)
-
-    return attribution
+    return torch.cat(attribution, dim=1).squeeze().cpu().numpy()
 
 
 def generate_feedback(
@@ -124,66 +117,91 @@ def generate_feedback(
 
         # PPO
         # Note: This only works if `share_features_extractor` is True
-        explainer = IntegratedGradients(
-            lambda observations: expert_model.policy.value_net(
-                expert_model.policy.mlp_extractor(
-                    expert_model.policy.extract_features(observations)
-                )[0]
-            )
-        )
+        # explainer = IntegratedGradients(
+        #     lambda observation: expert_model.policy.value_net(
+        #         expert_model.policy.mlp_extractor(
+        #             expert_model.policy.extract_features(observation)
+        #         )[0]
+        #     )
+        # )
 
         # SAC
-        # explainer = IntegratedGradients(expert_model.policy.critic.q1_forward)
+        explainer = IntegratedGradients(
+            lambda observation, actions: torch.min(
+                torch.cat(
+                    expert_model.policy.critic_target(observation, actions),
+                    dim=1,
+                ),
+                dim=1,
+                keepdim=True,
+            )[0]
+        )
 
-        observations, _ = environment.reset()
+        observation, _ = environment.reset()
 
         for _ in range(STEPS_PER_CHECKPOINT):
             # Get predicted actions and observations/rewards after taking the action
-            action, _states = model.predict(observations, deterministic=True)
+            actions, _state = model.predict(observation, deterministic=True)
 
             # Note: only works with MuJoCo environments
             # (needs `sim.get_state()` and `sim.set_state()`)
             state_copy = environment.sim.get_state()  # type: ignore
 
             # Get value from value function of the expert
-            observation_array = expert_model.policy.obs_to_tensor(
-                numpy.array(observations)
+            observation_tensor = expert_model.policy.obs_to_tensor(
+                numpy.array(observation)
             )[0]
 
-            with torch.no_grad():
-                expert_value = expert_model.policy.predict_values(observation_array)[0]
-                expert_action, _states = expert_model.predict(
-                    observations, deterministic=True
-                )
+            assert isinstance(observation_tensor, Tensor)
+
+            # PPO
+            # with torch.no_grad():
+            #     expert_value = expert_model.policy.predict_values(observation_tensor)[0]
+
+            # SAC
+            expert_value = torch.min(
+                torch.cat(
+                    expert_model.policy.critic_target(
+                        observation_tensor,
+                        torch.from_numpy(actions).unsqueeze(0).to(DEVICE),
+                    ),
+                    dim=1,
+                ),
+                dim=1,
+            )[0]
+
+            expert_actions, _state = expert_model.predict(
+                observation, deterministic=True
+            )
 
             # Take the expert's action
-            expert_observations, reward, terminated, _truncated, _info = (
-                environment.step(expert_action)
+            expert_observation, reward, terminated, _truncated, _info = (
+                environment.step(expert_actions)
             )
 
             # Restore environment state, then take the agent's action
             environment.sim.set_state(state_copy)  # type: ignore
-            observations, reward, terminated, _truncated, _info = environment.step(
-                action
+            observation, reward, terminated, _truncated, _info = environment.step(
+                actions
             )
 
             # Add feedback to the list
             feedback.append(
                 {
-                    "action": action,
-                    "observations": observations,
+                    "actions": actions,
+                    "observation": observation,
                     "reward": reward,
                     "expert_value": expert_value.item(),
-                    "expert_action": expert_action,
-                    "expert_observations": expert_observations,
+                    "expert_actions": expert_actions,
+                    "expert_observation": expert_observation,
                     "expert_value_attributions": get_attributions(
-                        expert_observations, expert_model, explainer
-                    )[0],
+                        observation_tensor, expert_actions, explainer
+                    ),
                 }
             )
 
             if terminated:
-                observations, _ = environment.reset()
+                observation, _ = environment.reset()
 
         model_count += 1
         print(f"Model #{model_count}")

@@ -4,8 +4,8 @@ from os import path
 from pathlib import Path
 from typing import Type, Union
 
-import gymnasium as gym
-from gymnasium.wrappers.record_video import RecordVideo
+import gym
+from gym.wrappers.record_video import RecordVideo
 from stable_baselines3.ppo.ppo import PPO
 from stable_baselines3.sac.sac import SAC
 
@@ -32,16 +32,16 @@ def record_videos(
     """Record videos of the training environment."""
     model = model_class.load(reward_model_path)
 
-    observations, _ = environment.reset()
+    observation, _ = environment.reset()
 
     for _ in range(0, VIDEOS_PER_CHECKPOINT * RECORD_INTERVAL):
-        action, _states = model.predict(observations, deterministic=True) # type: ignore
-        observations, _reward, terminated, _truncated, _info = environment.step(action)
+        actions, _states = model.predict(observation, deterministic=True)  # type: ignore
+        observation, _reward, terminated, _truncated, _info = environment.step(actions)
 
         environment.render()
 
         if terminated:
-            observations = environment.reset()
+            observation = environment.reset()
 
 
 def main():

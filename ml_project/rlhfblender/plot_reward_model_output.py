@@ -39,7 +39,7 @@ def main():
     feedback_start = STEPS_PER_CHECKPOINT * CHECKPOINT_NUMBER
     feedback_end = feedback_start + STEPS_PER_CHECKPOINT
 
-    observations = list(map(lambda feedback: feedback["observations"], feedback_list))[
+    observation = list(map(lambda feedback: feedback["observation"], feedback_list))[
         feedback_start:feedback_end
     ]
 
@@ -55,12 +55,12 @@ def main():
 
     steps = range(STEPS_PER_CHECKPOINT)
 
-    observations_tensor = Tensor(numpy.array(observations)).to(DEVICE)
+    observation_tensor = Tensor(numpy.array(observation)).to(DEVICE)
 
     print("Predicting rewards...")
 
     for i in steps:
-        predicted_rewards.append(reward_model(observations_tensor[i]).detach().cpu())
+        predicted_rewards.append(reward_model(observation_tensor[i]).detach().cpu())
 
         if (i + 1) % 1000 == 0:
             print(f"{i + 1}/{STEPS_PER_CHECKPOINT} done")

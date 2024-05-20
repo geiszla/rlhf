@@ -53,9 +53,11 @@ class FeedbackDataset(Dataset):
 
         match feedback_type:
             case "evaluative":
-                # First: Observations, Second: Reward
+                # First: Observation, Second: Reward
                 self.first = [
-                    feedback["observations"].astype("float32")
+                    numpy.concatenate(
+                        feedback["observation"], feedback["actions"]
+                    ).astype("float32")
                     for feedback in feedback_list
                 ]
                 self.second = [
@@ -63,10 +65,13 @@ class FeedbackDataset(Dataset):
                     for feedback in feedback_list
                 ]
             case "comparative":
-                # First: high-reward observations, Second: low-reward observations
+                # First: high-reward observation, Second: low-reward observation
                 observation_pairs = [
                     map(
-                        lambda feedback: feedback["observations"].astype("float32"),
+                        lambda feedback: numpy.concatenate(
+                            feedback["observation"],
+                            feedback["actions"],
+                        ).astype("float32"),
                         sorted(
                             list(
                                 (
@@ -87,42 +92,48 @@ class FeedbackDataset(Dataset):
                     STEPS_PER_CHECKPOINT if feedback_type == "demonstrative" else None
                 )
 
-                # First: Expert's observations, Second: Agent's observations
+                # First: Expert's observation, Second: Agent's observation
                 self.first = [
-                    feedback["expert_observations"].astype("float32")
+                    numpy.concatenate(
+                        feedback["expert_observation"], feedback["expert_actions"]
+                    ).astype("float32")
                     for feedback in feedback_list
                 ][:demonstrative_length]
 
                 self.second = [
-                    feedback["observations"].astype("float32")
+                    numpy.concatenate(
+                        feedback["observation"], feedback["actions"]
+                    ).astype("float32")
                     for feedback in feedback_list
                 ][:demonstrative_length]
             case "descriptive":
-                # First: Changed observations, Second: Agent's observations
+                # First: Changed observation, Second: Agent's observation
                 # TODO: generate more perturbation for one feedback
-                all_observations = numpy.array(
-                    list(map(lambda feedback: feedback["observations"], feedback_list))
+                model_inputs = numpy.array(
+                    list(
+                        map(
+                            lambda feedback: numpy.concatenate(
+                                feedback["observation"], feedback["actions"]
+                            ).astype("float32"),
+                            feedback_list,
+                        )
+                    )
                 )
 
-                standard_deviations = numpy.std(all_observations, axis=0)
+                # TODO: Test if this works
+                standard_deviations = numpy.std(model_inputs, axis=0)
 
-                for feedback in feedback_list:
-                    # Question: are we generating perturbations or new values here
-                    # (i.e., should mean be 0)?
+                for index, feedback in enumerate(feedback_list):
                     perturbations = numpy.random.normal(
-                        0, standard_deviations, feedback["observations"].shape
+                        0, standard_deviations, model_inputs.shape[-1]
                     )
 
-                    # TODO: regenerate feedback with flat array and remove the 0 index from here
                     perturbations[feedback["expert_value_attributions"] > 0] = 0
 
-                    feedback["observations"] += perturbations
+                    model_inputs[index] += perturbations
 
-                # First: Observations, Second: Reward
-                self.first = [
-                    feedback["observations"].astype("float32")
-                    for feedback in feedback_list
-                ]
+                # First: Observation, Second: Reward
+                self.first = model_inputs
                 self.second = [
                     numpy.float32(feedback["expert_value"])
                     for feedback in feedback_list
@@ -240,7 +251,7 @@ def main():
 
     # Train reward model
     reward_model = LightningNetwork(
-        input_dim=17,
+        input_dim=23,
         hidden_dim=256,
         layer_num=12,
         output_dim=1,
