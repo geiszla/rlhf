@@ -58,25 +58,22 @@ def get_attributions(
     explainer: IntegratedGradients,
 ) -> NDArray[numpy.float64]:
     """
-    Compute attributions for a given observation using the provided model and explainer.
+    Compute attributions for a given observation and actions using the provided explainer.
 
     Args:
-        observation (ObservationType): The input observation for which to compute attributions.
-        model (PPO): The model used for prediction.
+        observation (Tensor): The input observation for which to compute attributions.
+        actions (NDArray[ActionType]): The action taken by the agent.
         explainer (IntegratedGradients): The explainer used to compute attributions.
 
     Returns:
         NDArray[numpy.float32]: The computed attributions.
-
-    Raises:
-        ValueError: If the observation tensor or observation baseline tensor is not
-        a torch.Tensor.
     """
     observation_baselines = (
         torch.mean(observation).repeat(observation.shape[-1]).unsqueeze(0)
     )
 
     actions_tensor = torch.from_numpy(actions).unsqueeze(0).to(DEVICE)
+    # TODO: change baseline to be 0
     actions_baselines = (
         torch.mean(actions_tensor).repeat(actions.shape[-1]).unsqueeze(0)
     )
@@ -105,6 +102,8 @@ def generate_feedback(
     feedback: list[Feedback[ObservationT, ActionNumpyT]] = []
     model_count = 0
 
+    print("Model ID:", MODEL_ID)
+
     for file in os.listdir(checkpoints_path):
         if not re.search(f"{MODEL_ID}_[0-9]", file):
             continue
@@ -112,13 +111,13 @@ def generate_feedback(
         # Load current agent from checkpoint file
         model = model_class.load(
             path.join(checkpoints_path, file[:-4]),
-            custom_objects={"lr_schedule": lambda _: 0.0},
+            custom_objects={"learning_rate": 0.0, "lr_schedule": lambda _: 0.0},
         )
 
         # PPO
         # Note: This only works if `share_features_extractor` is True
         # explainer = IntegratedGradients(
-        #     lambda observation: expert_model.policy.value_net(
+        #     lambda observation, _actions: expert_model.policy.value_net(
         #         expert_model.policy.mlp_extractor(
         #             expert_model.policy.extract_features(observation)
         #         )[0]
@@ -137,17 +136,34 @@ def generate_feedback(
             )[0]
         )
 
+        previous_expert_value = 0
+
         observation, _ = environment.reset()
 
         for _ in range(STEPS_PER_CHECKPOINT):
-            # Get predicted actions and observations/rewards after taking the action
-            actions, _state = model.predict(observation, deterministic=True)
-
+            # Save the current state of the environment before taking the expert's action
             # Note: only works with MuJoCo environments
             # (needs `sim.get_state()` and `sim.set_state()`)
             state_copy = environment.sim.get_state()  # type: ignore
 
-            # Get value from value function of the expert
+            # Predict and take the expert's action
+            expert_actions, _state = expert_model.predict(
+                observation, deterministic=True
+            )
+
+            expert_observation, reward, terminated, _truncated, _info = (
+                environment.step(expert_actions)
+            )
+
+            # Restore environment state, then predict and take the agent's action
+            environment.sim.set_state(state_copy)  # type: ignore
+
+            actions, _state = model.predict(observation, deterministic=True)
+            next_observation, reward, terminated, _truncated, _info = environment.step(
+                actions
+            )
+
+            # Predict expert value and observation/action attributions
             observation_tensor = expert_model.policy.obs_to_tensor(
                 numpy.array(observation)
             )[0]
@@ -155,8 +171,14 @@ def generate_feedback(
             assert isinstance(observation_tensor, Tensor)
 
             # PPO
+            # next_observation_tensor = expert_model.policy.obs_to_tensor(
+            #     numpy.array(next_observation)
+            # )[0]
+
+            # assert isinstance(next_observation_tensor, Tensor)
+
             # with torch.no_grad():
-            #     expert_value = expert_model.policy.predict_values(observation_tensor)[0]
+            #     expert_value = expert_model.policy.predict_values(next_observation_tensor)[0]
 
             # SAC
             expert_value = torch.min(
@@ -170,21 +192,6 @@ def generate_feedback(
                 dim=1,
             )[0]
 
-            expert_actions, _state = expert_model.predict(
-                observation, deterministic=True
-            )
-
-            # Take the expert's action
-            expert_observation, reward, terminated, _truncated, _info = (
-                environment.step(expert_actions)
-            )
-
-            # Restore environment state, then take the agent's action
-            environment.sim.set_state(state_copy)  # type: ignore
-            observation, reward, terminated, _truncated, _info = environment.step(
-                actions
-            )
-
             # Add feedback to the list
             feedback.append(
                 {
@@ -192,16 +199,22 @@ def generate_feedback(
                     "observation": observation,
                     "reward": reward,
                     "expert_value": expert_value.item(),
+                    "expert_value_difference": expert_value.item()
+                    - previous_expert_value,
                     "expert_actions": expert_actions,
                     "expert_observation": expert_observation,
                     "expert_value_attributions": get_attributions(
-                        observation_tensor, expert_actions, explainer
+                        observation_tensor, actions, explainer
                     ),
                 }
             )
 
+            previous_expert_value = expert_value.item()
+
             if terminated:
                 observation, _ = environment.reset()
+            else:
+                observation = next_observation
 
         model_count += 1
         print(f"Model #{model_count}")

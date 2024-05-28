@@ -29,7 +29,7 @@ from .common import (
     FEEDBACK_TYPE,
     MODEL_ID,
     STEPS_PER_CHECKPOINT,
-    USE_REWARD_MODEL,
+    USE_REWARD_DIFFERENCE,
     USE_SDE,
     cpu_count,
     get_reward_model_name,
@@ -51,17 +51,21 @@ class FeedbackDataset(Dataset):
         with open(dataset_path, "rb") as feedback_file:
             feedback_list: list[Feedback] = pickle.load(feedback_file)
 
+        expert_value_key = (
+            "expert_value" if USE_REWARD_DIFFERENCE else "expert_value_difference"
+        )
+
         match feedback_type:
             case "evaluative":
                 # First: Observation, Second: Reward
                 self.first = [
                     numpy.concatenate(
-                        feedback["observation"], feedback["actions"]
+                        [feedback["observation"], feedback["actions"]]
                     ).astype("float32")
                     for feedback in feedback_list
                 ]
                 self.second = [
-                    numpy.float32(feedback["expert_value"])
+                    numpy.float32(feedback[expert_value_key])
                     for feedback in feedback_list
                 ]
             case "comparative":
@@ -69,8 +73,7 @@ class FeedbackDataset(Dataset):
                 observation_pairs = [
                     map(
                         lambda feedback: numpy.concatenate(
-                            feedback["observation"],
-                            feedback["actions"],
+                            [feedback["observation"], feedback["actions"]]
                         ).astype("float32"),
                         sorted(
                             list(
@@ -79,7 +82,7 @@ class FeedbackDataset(Dataset):
                                     feedback_list[randint(0, len(feedback_list) - 1)],
                                 )
                             ),
-                            key=lambda feedback: feedback["expert_value"],
+                            key=lambda feedback: feedback[expert_value_key],
                             reverse=True,
                         ),
                     )
@@ -95,14 +98,14 @@ class FeedbackDataset(Dataset):
                 # First: Expert's observation, Second: Agent's observation
                 self.first = [
                     numpy.concatenate(
-                        feedback["expert_observation"], feedback["expert_actions"]
+                        [feedback["expert_observation"], feedback["expert_actions"]]
                     ).astype("float32")
                     for feedback in feedback_list
                 ][:demonstrative_length]
 
                 self.second = [
                     numpy.concatenate(
-                        feedback["observation"], feedback["actions"]
+                        [feedback["observation"], feedback["actions"]]
                     ).astype("float32")
                     for feedback in feedback_list
                 ][:demonstrative_length]
@@ -113,7 +116,7 @@ class FeedbackDataset(Dataset):
                     list(
                         map(
                             lambda feedback: numpy.concatenate(
-                                feedback["observation"], feedback["actions"]
+                                [feedback["observation"], feedback["actions"]]
                             ).astype("float32"),
                             feedback_list,
                         )
@@ -135,7 +138,7 @@ class FeedbackDataset(Dataset):
                 # First: Observation, Second: Reward
                 self.first = model_inputs
                 self.second = [
-                    numpy.float32(feedback["expert_value"])
+                    numpy.float32(feedback[expert_value_key])
                     for feedback in feedback_list
                 ]
             case _:
@@ -182,7 +185,7 @@ def train_reward_model(
         val_set, batch_size=batch_size, pin_memory=True, num_workers=cpu_count
     )
 
-    run_name = get_reward_model_name(randrange(0, 10000))
+    run_name = get_reward_model_name(randrange(1000, 10000))
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=path.join(script_path, "reward_model_checkpoints"),
@@ -199,7 +202,6 @@ def train_reward_model(
             "rl_algorithm": ALGORITHM,
             "rl_environment": ENVIRONMENT_NAME,
             "rl_is_use_sde": USE_SDE,
-            "rl_is_finetuned": USE_REWARD_MODEL,
             "rl_feedback_type": FEEDBACK_TYPE,
             "max_epochs": epochs,
             "batch_size": batch_size,
@@ -230,6 +232,7 @@ def train_reward_model(
 
 def main():
     """Run reward model training."""
+    print("Model ID:", MODEL_ID)
 
     # Load data
     dataset = FeedbackDataset(

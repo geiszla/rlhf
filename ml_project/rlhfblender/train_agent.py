@@ -1,7 +1,7 @@
 """Module for training an RL agent."""
 
 from os import path
-from typing import Union
+from typing import Literal, Union
 
 import numpy as np
 import torch
@@ -19,25 +19,64 @@ from .common import (
     DEVICE,
     ENVIRONMENT_NAME,
     FEEDBACK_TYPE,
-    MODEL_ID,
     USE_SDE,
-    checkpoints_path,
     cpu_count,
+    get_reward_model_name,
     script_path,
 )
 
 # Set feedback type to None to not use the custom reward model
-TRAINING_FEEDBACK_TYPE: Union[FeedbackType, None] = FEEDBACK_TYPE
+TRAINING_FEEDBACK_TYPE: Union[FeedbackType, Literal["expert"], None] = FEEDBACK_TYPE
 
 tensorboard_path = path.join(script_path, "..", "..", "rl_logs")
 
-REWARD_MODEL_ID = "_".join(
-    [MODEL_ID, *([FEEDBACK_TYPE] if FEEDBACK_TYPE is not None else []), str(3653)]
+REWARD_MODEL_ID = get_reward_model_name(
+    "",
+    is_without_feedback=(
+        TRAINING_FEEDBACK_TYPE is None or TRAINING_FEEDBACK_TYPE == "expert"
+    ),
 )
 
 reward_model_path = path.join(
     script_path, "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
 )
+
+if TRAINING_FEEDBACK_TYPE == "expert":
+    # PPO
+    # expert_model = PPO.load(
+    #     path.join(
+    #         script_path,
+    #         "..",
+    #         "..",
+    #         "logs",
+    #         "ppo",
+    #         "HalfCheetah-v3_1",
+    #         "HalfCheetah-v3.zip",
+    #     ),
+    #     custom_objects={
+    #         "learning_rate": 0.0,
+    #         "lr_schedule": lambda _: 0.0,
+    #         "clip_range": lambda _: 0.0,
+    #     },
+    # )
+
+    # SAC
+    expert_model = SAC.load(
+        path.join(
+            script_path,
+            "..",
+            "..",
+            "logs",
+            "sac",
+            "HalfCheetah-v3_1",
+            "HalfCheetah-v3.zip",
+        ),
+        custom_objects={
+            "learning_rate": 0.0,
+            "lr_schedule": lambda _: 0.0,
+            "clip_range": lambda _: 0.0,
+        },
+    )
 
 
 class CustomReward(RewardFn):
@@ -47,20 +86,52 @@ class CustomReward(RewardFn):
         """Initialize custom reward."""
         super().__init__()
 
-        # pylint: disable=no-value-for-parameter
-        self.reward_model = LightningNetwork.load_from_checkpoint(
-            checkpoint_path=reward_model_path
-        )
+        if TRAINING_FEEDBACK_TYPE != "expert":
+            # pylint: disable=no-value-for-parameter
+            self.reward_model = LightningNetwork.load_from_checkpoint(
+                checkpoint_path=reward_model_path
+            )
 
     def __call__(
         self,
         state: np.ndarray,
-        _actions: np.ndarray,
-        _next_state: np.ndarray,
+        actions: np.ndarray,
+        next_state: np.ndarray,
         _done: np.ndarray,
     ) -> list:
         """Return reward given the current state."""
-        rewards = self.reward_model(torch.Tensor(state).to(DEVICE))
+
+        if TRAINING_FEEDBACK_TYPE == "expert":
+            # PPO
+            # rewards = expert_model.policy.value_net(
+            #     expert_model.policy.mlp_extractor(
+            #         expert_model.policy.extract_features(
+            #             torch.from_numpy(next_state).to(DEVICE)
+            #         )
+            #     )[0]
+            # )
+
+            # SAC
+            rewards = torch.min(
+                torch.cat(
+                    expert_model.policy.critic_target(
+                        torch.from_numpy(state).to(DEVICE),
+                        torch.from_numpy(actions).to(DEVICE),
+                    ),
+                    dim=1,
+                ),
+                dim=1,
+            )[0]
+        else:
+            rewards = self.reward_model(
+                torch.cat(
+                    [
+                        torch.Tensor(state).to(DEVICE),
+                        torch.Tensor(actions).to(DEVICE),
+                    ],
+                    dim=1,
+                )
+            )
 
         return [reward.detach().item() for reward in rewards]
 
@@ -73,7 +144,8 @@ def main():
         ENVIRONMENT_NAME, n_envs=cpu_count if ALGORITHM != "ppo" else 1
     )
 
-    if FEEDBACK_TYPE is not None:
+    if TRAINING_FEEDBACK_TYPE is not None:
+        print(f'Using the "{TRAINING_FEEDBACK_TYPE}" reward model for training.')
         environment = RewardVecEnvWrapper(environment, reward_fn=CustomReward())
 
     # Select agent algorithm
@@ -87,13 +159,14 @@ def main():
     model = model_class(
         "MlpPolicy",
         environment,
-        verbose=1,
+        # verbose=1,
         tensorboard_log=tensorboard_path,
         use_sde=USE_SDE,
+        gamma=0,
     )
 
     iterations = 20
-    steps_per_iteration = 25000
+    steps_per_iteration = 125000
     timesteps = 0
 
     for iteration_count in range(iterations):
@@ -104,8 +177,9 @@ def main():
         )
 
         timesteps = trained_model.num_timesteps
+        print(f"{timesteps}/{steps_per_iteration * iterations} steps done")
 
-        model.save(path.join(checkpoints_path, f"{REWARD_MODEL_ID}_{timesteps}"))
+        # model.save(path.join(checkpoints_path, f"{REWARD_MODEL_ID}_{timesteps}"))
 
 
 if __name__ == "__main__":
