@@ -26,14 +26,16 @@ from ..types import Feedback, FeedbackType
 from .common import (
     ALGORITHM,
     ENVIRONMENT_NAME,
+    FEEDBACK_ID,
     FEEDBACK_TYPE,
-    MODEL_ID,
     STEPS_PER_CHECKPOINT,
     USE_REWARD_DIFFERENCE,
     USE_SDE,
     cpu_count,
     get_reward_model_name,
 )
+
+REWARD_MODEL_ID = get_reward_model_name(randrange(1000, 10000))
 
 script_path = Path(__file__).parent.resolve()
 
@@ -52,7 +54,7 @@ class FeedbackDataset(Dataset):
             feedback_list: list[Feedback] = pickle.load(feedback_file)
 
         expert_value_key = (
-            "expert_value" if USE_REWARD_DIFFERENCE else "expert_value_difference"
+            "expert_value" if not USE_REWARD_DIFFERENCE else "expert_value_difference"
         )
 
         match feedback_type:
@@ -160,9 +162,9 @@ class FeedbackDataset(Dataset):
 def train_reward_model(
     reward_model: LightningModule,
     dataset: FeedbackDataset,
-    epochs: int,
+    maximum_epochs: int,
     batch_size: int,
-    gradient_clip_value: float = 0,
+    gradient_clip_value: Union[float, None] = None,
     split_ratio: float = 0.8,
     enable_progress_bar=True,
     callback: Union[Callback, None] = None,
@@ -185,16 +187,14 @@ def train_reward_model(
         val_set, batch_size=batch_size, pin_memory=True, num_workers=cpu_count
     )
 
-    run_name = get_reward_model_name(randrange(1000, 10000))
-
     checkpoint_callback = ModelCheckpoint(
         dirpath=path.join(script_path, "reward_model_checkpoints"),
-        filename=run_name,
+        filename=REWARD_MODEL_ID,
         monitor="val_loss",
     )
 
     # initialise the wandb logger and name your wandb project
-    wandb_logger = WandbLogger(project="Masters Thesis", name=run_name)
+    wandb_logger = WandbLogger(project="Masters Thesis", name=REWARD_MODEL_ID)
 
     # add your batch size to the wandb config
     wandb_logger.experiment.config.update(
@@ -203,7 +203,7 @@ def train_reward_model(
             "rl_environment": ENVIRONMENT_NAME,
             "rl_is_use_sde": USE_SDE,
             "rl_feedback_type": FEEDBACK_TYPE,
-            "max_epochs": epochs,
+            "max_epochs": maximum_epochs,
             "batch_size": batch_size,
             "gradient_clip_value": gradient_clip_value,
             "learning_rate": reward_model.learning_rate,
@@ -211,7 +211,7 @@ def train_reward_model(
     )
 
     trainer = Trainer(
-        max_epochs=epochs,
+        max_epochs=maximum_epochs,
         log_every_n_steps=5,
         gradient_clip_val=gradient_clip_value,
         enable_progress_bar=enable_progress_bar,
@@ -232,11 +232,13 @@ def train_reward_model(
 
 def main():
     """Run reward model training."""
-    print("Model ID:", MODEL_ID)
+    print("Feedback ID:", FEEDBACK_ID)
+    print("Model ID:", REWARD_MODEL_ID)
+    print()
 
     # Load data
     dataset = FeedbackDataset(
-        path.join(script_path, "feedback", f"{MODEL_ID}.pkl"), FEEDBACK_TYPE
+        path.join(script_path, "feedback", f"{FEEDBACK_ID}.pkl"), FEEDBACK_TYPE
     )
 
     # Select loss function based on feedback type
@@ -262,7 +264,7 @@ def main():
         learning_rate=2e-5,
     )
 
-    train_reward_model(reward_model, dataset, epochs=100, batch_size=4)
+    train_reward_model(reward_model, dataset, maximum_epochs=100, batch_size=4)
 
 
 if __name__ == "__main__":

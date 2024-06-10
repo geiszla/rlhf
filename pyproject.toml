@@ -37,7 +37,6 @@ flask = "^3.0.2"
 gym = "^0.26.2"
 imitation = "^1.0.0"
 # Required to export videos of RL environments
-moviepy = "^1.0.3"
 mujoco-py = "^2.1.2.14"
 numpy = "^1.26.4"
 optuna = "^3.5.0"
@@ -50,6 +49,7 @@ stable-baselines3 = "^2.2.1"
 tensorboard = "^2.16.2"
 torch = "^2.2.1"
 wandb = "^0.16.6"
+moviepy = "^1.0.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.2.0"

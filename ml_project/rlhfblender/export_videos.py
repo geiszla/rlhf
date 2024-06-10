@@ -4,8 +4,8 @@ from os import path
 from pathlib import Path
 from typing import Type, Union
 
-import gym
-from gym.wrappers.record_video import RecordVideo
+import gymnasium as gym
+from gymnasium.wrappers.record_video import RecordVideo
 from stable_baselines3.ppo.ppo import PPO
 from stable_baselines3.sac.sac import SAC
 
@@ -19,10 +19,14 @@ from .common import (
 
 RECORD_INTERVAL = 500
 RECORD_LENGTH = 100
-VIDEOS_PER_CHECKPOINT = 2
 
 script_path = Path(__file__).parent.resolve()
-reward_model_path = path.join(checkpoints_path, f"{get_reward_model_name(3653)}_500000")
+
+reward_model_path = path.join(
+    checkpoints_path, f"{get_reward_model_name('7398_test')}_2250000"
+)
+
+output_path = path.join(script_path, "..", "static", "videos")
 
 
 def record_videos(
@@ -34,7 +38,7 @@ def record_videos(
 
     observation, _ = environment.reset()
 
-    for _ in range(0, VIDEOS_PER_CHECKPOINT * RECORD_INTERVAL):
+    for _ in range(0, RECORD_INTERVAL * 2):
         actions, _states = model.predict(observation, deterministic=True)  # type: ignore
         observation, _reward, terminated, _truncated, _info = environment.step(actions)
 
@@ -46,11 +50,14 @@ def record_videos(
 
 def main():
     """Run video generation."""
+    print("Reward model path:", reward_model_path)
+    print()
+
     environment = gym.make(ENVIRONMENT_NAME, render_mode="rgb_array")
 
     environment = RecordVideo(
         environment,
-        video_folder=path.join(script_path, "..", "static", "videos"),
+        video_folder=output_path,
         step_trigger=lambda n: n % RECORD_INTERVAL == 0,
         video_length=RECORD_LENGTH,
         name_prefix=f"{MODEL_ID}",

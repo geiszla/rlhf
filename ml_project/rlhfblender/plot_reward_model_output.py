@@ -12,25 +12,32 @@ from torch import Tensor
 
 from ..reward_model.networks_old import LightningNetwork
 from ..types import Feedback
-from .common import DEVICE, MODEL_ID, get_reward_model_name
+from .common import DEVICE, FEEDBACK_ID, STEPS_PER_CHECKPOINT, get_reward_model_name
 
 # Uncomment line below to use PyPlot with VSCode Tunnels
 matplotlib.use("agg")
 
+CHECKPOINT_NUMBER = 0
+STEP_COUNT = 1000
+
+REWARD_MODEL_ID = get_reward_model_name(7398)
+
 script_path = Path(__file__).parent.resolve()
 
+feedback_path = path.join(script_path, "feedback", f"{FEEDBACK_ID}.pkl")
 reward_model_path = path.join(
-    script_path, "reward_model_checkpoints", f"{get_reward_model_name(428)}.ckpt"
+    script_path, "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
 )
 
-CHECKPOINT_NUMBER = 1
-STEP_COUNT = 1000
+output_path = path.join(script_path, "results", "reward_model_output.png")
 
 
 def main():
     """Plot reward model output."""
 
-    feedback_path = path.join(script_path, "feedback", f"{MODEL_ID}.pkl")
+    print("Feedback ID:", FEEDBACK_ID)
+    print("Model ID:", REWARD_MODEL_ID)
+    print()
 
     with open(feedback_path, "rb") as feedback_file:
         feedback_list: list[Feedback] = pickle.load(feedback_file)
@@ -38,7 +45,7 @@ def main():
     # pylint: disable=no-value-for-parameter
     reward_model = LightningNetwork.load_from_checkpoint(reward_model_path)
 
-    feedback_start = STEP_COUNT * CHECKPOINT_NUMBER
+    feedback_start = STEPS_PER_CHECKPOINT * CHECKPOINT_NUMBER
     feedback_end = feedback_start + STEP_COUNT
 
     observations = list(map(lambda feedback: feedback["observation"], feedback_list))[
@@ -89,7 +96,7 @@ def main():
     pyplot.ylabel("Rewards")
     pyplot.legend()
 
-    pyplot.savefig(path.join(script_path, "results", "reward_model_output.png"))
+    pyplot.savefig(output_path)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import re
 from os import path
 from typing import Type, Union
 
-import gym
+import gymnasium as gym
 import numpy
 import torch
 from captum.attr import IntegratedGradients
@@ -20,11 +20,13 @@ from .common import (
     ALGORITHM,
     DEVICE,
     ENVIRONMENT_NAME,
-    MODEL_ID,
+    FEEDBACK_ID,
     STEPS_PER_CHECKPOINT,
     checkpoints_path,
     script_path,
 )
+
+feedback_path = path.join(script_path, "feedback", f"{FEEDBACK_ID}.pkl")
 
 # Load the pretrained "expert" model
 # PPO
@@ -102,10 +104,8 @@ def generate_feedback(
     feedback: list[Feedback[ObservationT, ActionNumpyT]] = []
     model_count = 0
 
-    print("Model ID:", MODEL_ID)
-
     for file in os.listdir(checkpoints_path):
-        if not re.search(f"{MODEL_ID}_[0-9]", file):
+        if not re.search(f"{FEEDBACK_ID}_[0-9]", file):
             continue
 
         # Load current agent from checkpoint file
@@ -197,7 +197,7 @@ def generate_feedback(
                 {
                     "actions": actions,
                     "observation": observation,
-                    "reward": reward,
+                    "reward": float(reward),
                     "expert_value": expert_value.item(),
                     "expert_value_difference": expert_value.item()
                     - previous_expert_value,
@@ -217,16 +217,20 @@ def generate_feedback(
                 observation = next_observation
 
         model_count += 1
-        print(f"Model #{model_count}")
+        print(f"Model #{model_count} done")
 
         # if model_count == 3:
         #     break
 
-    return feedback
+    # Don't save first feedback, because the expert value difference is not valid yet
+    return feedback[1:]
 
 
 def main():
     """Run data generation."""
+    print("Feedback ID:", FEEDBACK_ID)
+    print()
+
     env = gym.make(ENVIRONMENT_NAME)
 
     # Select agent algorithm
@@ -241,10 +245,7 @@ def main():
     feedback = generate_feedback(model_class, env)
 
     # Save feedback
-    with open(
-        path.join(script_path, "feedback", f"{MODEL_ID}.pkl"),
-        "wb",
-    ) as feedback_file:
+    with open(feedback_path, "wb") as feedback_file:
         pickle.dump(feedback, feedback_file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
