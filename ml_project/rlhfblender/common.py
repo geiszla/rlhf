@@ -16,11 +16,11 @@ USE_REWARD_DIFFERENCE = False
 
 STEPS_PER_CHECKPOINT = 10000
 
-EXPERIMENT_NUBMER = 5
+EXPERIMENT_NUBMER = 6
 FEEDBACK_ID = "_".join([ALGORITHM, ENVIRONMENT_NAME, *(["sde"] if USE_SDE else [])])
 MODEL_ID = f"#{EXPERIMENT_NUBMER}_{FEEDBACK_ID}"
 
-FEEDBACK_TYPE: FeedbackType = "evaluative"
+FEEDBACK_TYPE: FeedbackType = "corrective"
 
 script_path = Path(__file__).parent.resolve()
 checkpoints_path = path.join(script_path, "..", "rl", "models_final")

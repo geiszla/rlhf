@@ -34,13 +34,13 @@ matplotlib.use("agg")
 # Set feedback type to None to not use the custom reward model
 TRAINING_FEEDBACK_TYPE: Union[FeedbackType, Literal["expert"], None] = FEEDBACK_TYPE
 REWARD_MODEL_ID = get_reward_model_name(
-    7398,
+    7552,
     is_without_feedback=(
         TRAINING_FEEDBACK_TYPE is None or TRAINING_FEEDBACK_TYPE == "expert"
     ),
 )
 
-RUN_NAME = f"{REWARD_MODEL_ID}_test2_gamma"
+RUN_NAME = f"{REWARD_MODEL_ID}"
 
 tensorboard_path = path.join(script_path, "..", "..", "rl_logs")
 reward_model_path = path.join(
@@ -189,7 +189,7 @@ class CustomReward(RewardFn):
 def main():
     """Run RL agent training."""
     # For PPO, the more environments there are, the more `num_timesteps` shifts
-    # from `total_timesteps`
+    # from `total_timesteps` (TODO: check this again)
     environment = make_vec_env(
         ENVIRONMENT_NAME,
         n_envs=cpu_count if ALGORITHM != "ppo" else 1,
@@ -219,14 +219,14 @@ def main():
         # verbose=1,
         tensorboard_log=tensorboard_path,
         use_sde=USE_SDE,
-        gamma=0,
+        # gamma=0,
     )
 
     iterations = 30
     steps_per_iteration = 125000
     timesteps = 0
 
-    model.save(f"{output_path}_{timesteps}")
+    # model.save(f"{output_path}_{timesteps}")
 
     for iteration_count in range(iterations):
         trained_model = model.learn(

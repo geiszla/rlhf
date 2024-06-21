@@ -217,7 +217,7 @@ def train_reward_model(
         enable_progress_bar=enable_progress_bar,
         logger=wandb_logger,
         callbacks=[
-            EarlyStopping(monitor="val_loss", mode="min"),
+            EarlyStopping(monitor="val_loss", mode="min", patience=5),
             checkpoint_callback,
             *([callback] if callback is not None else []),
         ],
@@ -261,7 +261,7 @@ def main():
         layer_num=12,
         output_dim=1,
         loss_function=loss_function,
-        learning_rate=2e-5,
+        learning_rate=1e-6 if FEEDBACK_TYPE == "corrective" else 2e-5,
     )
 
     train_reward_model(reward_model, dataset, maximum_epochs=100, batch_size=4)

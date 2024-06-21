@@ -23,7 +23,7 @@ RECORD_LENGTH = 100
 script_path = Path(__file__).parent.resolve()
 
 reward_model_path = path.join(
-    checkpoints_path, f"{get_reward_model_name('7398_test')}_2250000"
+    checkpoints_path, f"{get_reward_model_name('3161')}_3625008"
 )
 
 output_path = path.join(script_path, "..", "static", "videos")
