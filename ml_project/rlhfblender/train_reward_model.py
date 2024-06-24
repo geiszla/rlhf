@@ -35,7 +35,7 @@ from .common import (
     get_reward_model_name,
 )
 
-REWARD_MODEL_ID = get_reward_model_name(randrange(1000, 10000))
+REWARD_MODEL_ID = get_reward_model_name(f"{randrange(1000, 10000)}_double_obs_adamw")
 
 script_path = Path(__file__).parent.resolve()
 
@@ -98,19 +98,38 @@ class FeedbackDataset(Dataset):
                 )
 
                 # First: Expert's observation, Second: Agent's observation
+                # Note: this only works for IRL (for observation-only models, use
+                # `expert_observation` and `next_observation` for the first and second respectively)
+                # TODO: experiment with changing the threshold
                 self.first = [
                     numpy.concatenate(
-                        [feedback["expert_observation"], feedback["expert_actions"]]
+                        [
+                            feedback["observation"],
+                            feedback["expert_actions"],
+                            feedback["next_expert_observation"],
+                        ]
                     ).astype("float32")
                     for feedback in feedback_list
+                    if feedback["expert_own_value"] > feedback["expert_value"]
                 ][:demonstrative_length]
 
                 self.second = [
                     numpy.concatenate(
-                        [feedback["observation"], feedback["actions"]]
+                        [
+                            feedback["observation"],
+                            feedback["actions"],
+                            feedback["next_observation"],
+                        ]
                     ).astype("float32")
                     for feedback in feedback_list
+                    if feedback["expert_own_value"] > feedback["expert_value"]
                 ][:demonstrative_length]
+
+                numpy.set_printoptions(suppress=True)
+
+                print(self.first[121])
+                print(self.second[121])
+                exit()
             case "descriptive":
                 # First: Changed observation, Second: Agent's observation
                 # TODO: generate more perturbation for one feedback
@@ -125,7 +144,6 @@ class FeedbackDataset(Dataset):
                     )
                 )
 
-                # TODO: Test if this works
                 standard_deviations = numpy.std(model_inputs, axis=0)
 
                 for index, feedback in enumerate(feedback_list):
@@ -256,7 +274,7 @@ def main():
 
     # Train reward model
     reward_model = LightningNetwork(
-        input_dim=23,
+        input_dim=40,
         hidden_dim=256,
         layer_num=12,
         output_dim=1,

@@ -96,6 +96,15 @@ def get_attributions(
     return torch.cat(attribution, dim=1).squeeze().cpu().numpy()
 
 
+def predict_expert_value(observation: Tensor, actions: Tensor):
+    """Return the value from the expert's value function for a given observation and actions."""
+    return torch.min(
+        torch.cat(expert_model.policy.critic_target(observation, actions), dim=1),
+        dim=1,
+        keepdim=True,
+    )[0]
+
+
 def generate_feedback(
     model_class: Union[Type[PPO], Type[SAC]],
     environment: gym.Env[ObservationT, NDArray[ActionNumpyT]],
@@ -125,16 +134,7 @@ def generate_feedback(
         # )
 
         # SAC
-        explainer = IntegratedGradients(
-            lambda observation, actions: torch.min(
-                torch.cat(
-                    expert_model.policy.critic_target(observation, actions),
-                    dim=1,
-                ),
-                dim=1,
-                keepdim=True,
-            )[0]
-        )
+        explainer = IntegratedGradients(predict_expert_value)
 
         previous_expert_value = 0
 
@@ -151,7 +151,7 @@ def generate_feedback(
                 observation, deterministic=True
             )
 
-            expert_observation, reward, terminated, _truncated, _info = (
+            next_expert_observation, reward, terminated, _truncated, _info = (
                 environment.step(expert_actions)
             )
 
@@ -181,31 +181,33 @@ def generate_feedback(
             #     expert_value = expert_model.policy.predict_values(next_observation_tensor)[0]
 
             # SAC
-            expert_value = torch.min(
-                torch.cat(
-                    expert_model.policy.critic_target(
-                        observation_tensor,
-                        torch.from_numpy(actions).unsqueeze(0).to(DEVICE),
-                    ),
-                    dim=1,
-                ),
-                dim=1,
-            )[0]
+            with torch.no_grad():
+                expert_value = predict_expert_value(
+                    observation_tensor,
+                    torch.from_numpy(actions).unsqueeze(0).to(DEVICE),
+                )
+
+                expert_own_value = predict_expert_value(
+                    observation_tensor,
+                    torch.from_numpy(expert_actions).unsqueeze(0).to(DEVICE),
+                )
 
             # Add feedback to the list
             feedback.append(
                 {
                     "actions": actions,
                     "observation": observation,
+                    "next_observation": next_observation,
                     "reward": float(reward),
                     "expert_value": expert_value.item(),
                     "expert_value_difference": expert_value.item()
                     - previous_expert_value,
                     "expert_actions": expert_actions,
-                    "expert_observation": expert_observation,
+                    "next_expert_observation": next_expert_observation,
                     "expert_value_attributions": get_attributions(
                         observation_tensor, actions, explainer
                     ),
+                    "expert_own_value": expert_own_value.item(),
                 }
             )
 
@@ -231,7 +233,7 @@ def main():
     print("Feedback ID:", FEEDBACK_ID)
     print()
 
-    env = gym.make(ENVIRONMENT_NAME)
+    environment = gym.make(ENVIRONMENT_NAME)
 
     # Select agent algorithm
     if ALGORITHM == "sac":
@@ -242,7 +244,7 @@ def main():
         raise NotImplementedError(f"{ALGORITHM} not implemented")
 
     # Generate feedback
-    feedback = generate_feedback(model_class, env)
+    feedback = generate_feedback(model_class, environment)
 
     # Save feedback
     with open(feedback_path, "wb") as feedback_file:
