@@ -17,15 +17,15 @@ from .common import (
     get_reward_model_name,
 )
 
-RECORD_LENGTH = 100
-EPISODE_LENGTH = 10
+RECORD_LENGTH = 1000
+EPISODE_LENGTH = 500
 
 script_path = Path(__file__).parent.resolve()
 
 reward_model_path = path.join(
     checkpoints_path,
     # "sac_HalfCheetah-v3_2500000",
-    f"{get_reward_model_name('3465_high_threshold')}_3750000",
+    f"{get_reward_model_name('8393_filtered')}_3750000",
 )
 
 output_path = path.join(script_path, "..", "static", "videos")
@@ -40,7 +40,7 @@ def record_videos(
 
     observation, _ = environment.reset()
 
-    for _ in range(0, RECORD_LENGTH):
+    for _ in range(0, RECORD_LENGTH - 1):
         actions, _states = model.predict(observation)  # type: ignore
         observation, _reward, terminated, _truncated, _info = environment.step(actions)
 

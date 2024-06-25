@@ -17,10 +17,10 @@ from .common import DEVICE, FEEDBACK_ID, STEPS_PER_CHECKPOINT, get_reward_model_
 # Uncomment line below to use PyPlot with VSCode Tunnels
 matplotlib.use("agg")
 
-CHECKPOINT_NUMBER = 0
+CHECKPOINT_NUMBER = 5
 STEP_COUNT = 1000
 
-REWARD_MODEL_ID = get_reward_model_name(7398)
+REWARD_MODEL_ID = get_reward_model_name("8393_filtered")
 
 script_path = Path(__file__).parent.resolve()
 
@@ -56,9 +56,9 @@ def main():
         feedback_start:feedback_end
     ]
 
-    # rewards = list(map(lambda feedback: feedback["reward"], feedback_list))[
-    #     feedback_start:feedback_end
-    # ]
+    rewards = list(map(lambda feedback: feedback["reward"], feedback_list))[
+        feedback_start:feedback_end
+    ]
 
     expert_value_predictions = list(
         map(lambda feedback: feedback["expert_value"], feedback_list)
@@ -89,8 +89,8 @@ def main():
     print()
 
     pyplot.plot(steps, predicted_rewards, label="Reward model")
-    pyplot.plot(steps, expert_value_predictions, label="Expert value")
-    # pyplot.plot(steps, rewards, label="Ground truth rewards")
+    # pyplot.plot(steps, expert_value_predictions, label="Expert value")
+    pyplot.plot(steps, rewards, label="Ground truth rewards")
 
     pyplot.xlabel("Steps")
     pyplot.ylabel("Rewards")

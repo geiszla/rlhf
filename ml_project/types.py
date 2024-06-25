@@ -41,8 +41,9 @@ class Feedback(TypedDict, Generic[ObservationT, ActionNumpyT]):
 
     expert_value: float
     expert_value_difference: float
+    expert_observation: ObservationT
     expert_actions: NDArray[ActionNumpyT]
-    next_expert_observation: ObservationT
+    # next_expert_observation: ObservationT
     expert_value_attributions: NDArray[numpy.float64]
     expert_own_value: float
 

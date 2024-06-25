@@ -147,13 +147,23 @@ def generate_feedback(
             state_copy = environment.sim.get_state()  # type: ignore
 
             # Predict and take the expert's action
-            expert_actions, _state = expert_model.predict(
-                observation, deterministic=True
-            )
+            expert_observation = observation
+            next_expert_observation = observation
+            terminated = False
 
-            next_expert_observation, reward, terminated, _truncated, _info = (
-                environment.step(expert_actions)
-            )
+            for _ in range(20):
+                if terminated:
+                    expert_observation, _ = environment.reset()
+                else:
+                    expert_observation = next_expert_observation
+
+                expert_actions, _state = expert_model.predict(
+                    expert_observation, deterministic=True
+                )
+
+                next_expert_observation, reward, terminated, _truncated, _info = (
+                    environment.step(expert_actions)
+                )
 
             # Restore environment state, then predict and take the agent's action
             environment.sim.set_state(state_copy)  # type: ignore
@@ -187,8 +197,15 @@ def generate_feedback(
                     torch.from_numpy(actions).unsqueeze(0).to(DEVICE),
                 )
 
+            expert_observation_tensor = expert_model.policy.obs_to_tensor(
+                numpy.array(expert_observation)
+            )[0]
+
+            assert isinstance(expert_observation_tensor, Tensor)
+
+            with torch.no_grad():
                 expert_own_value = predict_expert_value(
-                    observation_tensor,
+                    expert_observation_tensor,
                     torch.from_numpy(expert_actions).unsqueeze(0).to(DEVICE),
                 )
 
@@ -202,8 +219,9 @@ def generate_feedback(
                     "expert_value": expert_value.item(),
                     "expert_value_difference": expert_value.item()
                     - previous_expert_value,
+                    "expert_observation": expert_observation,
                     "expert_actions": expert_actions,
-                    "next_expert_observation": next_expert_observation,
+                    # "next_expert_observation": next_expert_observation,
                     "expert_value_attributions": get_attributions(
                         observation_tensor, actions, explainer
                     ),

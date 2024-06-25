@@ -34,7 +34,7 @@ matplotlib.use("agg")
 # Set feedback type to None to not use the custom reward model
 TRAINING_FEEDBACK_TYPE: Union[FeedbackType, Literal["expert"], None] = FEEDBACK_TYPE
 REWARD_MODEL_ID = get_reward_model_name(
-    "2467_double_obs_adamw",
+    "8393_filtered",
     is_without_feedback=(
         TRAINING_FEEDBACK_TYPE is None or TRAINING_FEEDBACK_TYPE == "expert"
     ),
@@ -143,11 +143,6 @@ class CustomReward(RewardFn):
                         [
                             torch.Tensor(state).to(DEVICE),
                             torch.Tensor(actions).to(DEVICE),
-                            *(
-                                [torch.Tensor(next_state).to(DEVICE)]
-                                if FEEDBACK_TYPE == "corrective"
-                                else []
-                            ),
                         ],
                         dim=1,
                     )

@@ -35,7 +35,7 @@ from .common import (
     get_reward_model_name,
 )
 
-REWARD_MODEL_ID = get_reward_model_name(f"{randrange(1000, 10000)}_double_obs_adamw")
+REWARD_MODEL_ID = get_reward_model_name(f"{randrange(1000, 10000)}")
 
 script_path = Path(__file__).parent.resolve()
 
@@ -103,11 +103,7 @@ class FeedbackDataset(Dataset):
                 # TODO: experiment with changing the threshold
                 self.first = [
                     numpy.concatenate(
-                        [
-                            feedback["observation"],
-                            feedback["expert_actions"],
-                            feedback["next_expert_observation"],
-                        ]
+                        [feedback["expert_observation"], feedback["expert_actions"]]
                     ).astype("float32")
                     for feedback in feedback_list
                     if feedback["expert_own_value"] > feedback["expert_value"]
@@ -115,21 +111,11 @@ class FeedbackDataset(Dataset):
 
                 self.second = [
                     numpy.concatenate(
-                        [
-                            feedback["observation"],
-                            feedback["actions"],
-                            feedback["next_observation"],
-                        ]
+                        [feedback["observation"], feedback["actions"]]
                     ).astype("float32")
                     for feedback in feedback_list
                     if feedback["expert_own_value"] > feedback["expert_value"]
                 ][:demonstrative_length]
-
-                numpy.set_printoptions(suppress=True)
-
-                print(self.first[121])
-                print(self.second[121])
-                exit()
             case "descriptive":
                 # First: Changed observation, Second: Agent's observation
                 # TODO: generate more perturbation for one feedback
@@ -274,12 +260,16 @@ def main():
 
     # Train reward model
     reward_model = LightningNetwork(
-        input_dim=40,
+        input_dim=23,
         hidden_dim=256,
         layer_num=12,
         output_dim=1,
         loss_function=loss_function,
-        learning_rate=1e-6 if FEEDBACK_TYPE == "corrective" else 2e-5,
+        learning_rate=(
+            1e-6
+            if FEEDBACK_TYPE == "corrective"
+            else (1e-5 if FEEDBACK_TYPE == "comparative" else 2e-5)
+        ),
     )
 
     train_reward_model(reward_model, dataset, maximum_epochs=100, batch_size=4)
