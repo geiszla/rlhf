@@ -195,12 +195,10 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
 
 # Custom ignores
-output/
-data/
-logs/
+experts/
 videos/
 wandb/
 nohup.out
 
 # Too large for GitHub
-ml_project/rlhfblender/feedback/
+feedback/

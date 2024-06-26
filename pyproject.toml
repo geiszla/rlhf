@@ -2,31 +2,18 @@
 name = "ml-project"
 version = "0.1.0"
 description = "Project for the AI Center Projects in Machine Learning Research course"
-authors = [
-  "András Geiszl <geiszla@gmail.com>",
-  "Gian Hess <gihess@student.ethz.ch>",
-  "Yunxiang Guo <yunguo@student.ethz.ch>",
-  "Yves Bicker <bickery@student.ethz.ch>",
-]
+authors = ["András Geiszl <geiszla@gmail.com>"]
 license = "UNLICENSED"
 readme = "README.md"
-repository = "https://github.com/xiaoxiaoshikui/Machine-Learning-Project-for-ETH-AI-Center"
-packages = [{ include = "ml_project" }]
+repository = "https://github.com/geiszla/rlhf"
+packages = [{ include = "rlhf" }]
 
 [tool.poetry.scripts]
-train = "ml_project.rl.train_rl_agent:main"
-generate = "ml_project.rl.generate_videos_and_data:main"
-create_dataset = "ml_project.reward_model.create_preference_dataset:main"
-generate_reward = "ml_project.rl.generate_reward_data:main"
-pretrain_reward = "ml_project.reward_model.pretrain_reward_model:main"
-finetune_reward = "ml_project.reward_model.finetune_reward_model:main"
-
-# RLHF Blender
-generate_feedback = "ml_project.rlhfblender.generate_feedback:main"
-train_reward = "ml_project.rlhfblender.train_reward_model:main"
-plot_reward = "ml_project.rlhfblender.plot_reward_model_output:main"
-train_agent = "ml_project.rlhfblender.train_agent:main"
-export_videos = "ml_project.rlhfblender.export_videos:main"
+generate_feedback = "rlhf.generate_feedback:main"
+train_reward = "rlhf.train_reward_model:main"
+train_agent = "rlhf.train_agent:main"
+plot_reward = "rlhf.plot_reward_model_output:main"
+export_videos = "rlhf.export_videos:main"
 
 [tool.poetry.dependencies]
 python = "~3.11"
@@ -72,7 +59,7 @@ line-length = 88
 pythonVersion = "3.11"
 pythonPlatform = "All"
 
-include = ["ml_project"]
+include = ["rlhf"]
 exclude = ["**/__pycache__"]
 
 typeCheckingMode = "basic"

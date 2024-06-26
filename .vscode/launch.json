@@ -5,27 +5,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug Web Interface",
+      "name": "Debug Module",
       "type": "debugpy",
       "request": "launch",
-      "module": "flask",
-      "env": {
-        "FLASK_APP": "ml_project/web_interface",
-        "FLASK_DEBUG": "1"
-      },
-      "args": [
-        "run",
-        "--no-debugger",
-        "--no-reload"
-      ],
-      "jinja": true,
-      "justMyCode": true
-    },
-    {
-      "name": "Python: Module",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "ml_project.${fileDirnameBasename}.${fileBasenameNoExtension}"
+      "module": "rlhf.${fileDirnameBasename}.${fileBasenameNoExtension}"
     }
   ]
 }
