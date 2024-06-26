@@ -16,6 +16,7 @@ This is the repository for the Masters thesis project on Reinforcement Learning 
 
 ### Installing dependencies
 
+1. Install Python 3.11
 1. Run `poetry install` in the project directory to install dependencies of the project. It will create a separate environment for this project and activate it every time you run a command with `poetry run`.
 1. To install MuJoCo, follow the [instructions in the GitHub repo](https://github.com/openai/mujoco-py/#install-mujoco).
 1. Add `export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.mujoco/mujoco210/bin` to your shell profile and start a new shell to make MuJoCo discoverable.
@@ -27,6 +28,7 @@ This is the repository for the Masters thesis project on Reinforcement Learning 
 1. Install and open [VSCode](https://code.visualstudio.com/download)
 1. Install these VSCode extensions (by searching for them on the extensions tab): `charliermarsh.ruff`, `njpwerner.autodocstring`, `visualstudioexptteam.vscodeintellicode`, `ms-python.black-formatter`, `ms-python.isort`, `ms-python.vscode-pylance`, `ms-python.pylint`, `ms-python.python`, `kevinrose.vsc-python-indent`, `tamasfe.even-better-toml`
 1. Open the command palette, choose `Python: Select Interpreter`, then select the virtual environment created by Poetry.
+
    *Note: If the desired environment is not in the list, you can find the location of the environments by running `poetry env info -p`, then add the interpreter as a new entry.*
 1. Start a new terminal. VSCode will automatically activate the selected environment.
 
@@ -43,9 +45,10 @@ You can run scripts specified in `pyproject.toml` with `poetry run <script name>
 1. Open `rlhf/common.py` and set/increment the `EXPERIMENT_NUMBER` and the `FEEDBACK_TYPE` for the experiment you want to run. The experiment number will be appended to the beginning of logs and output files.
    *Note: For changing the expert, some parts of scripts currently commented out are need to be added back in.*
 1. Log into Weights and Biases by running `poetry run wandb login`.
-1. Run `poetry run generate_feedback` to generate data to train the feedback models. If successful, this will create a `.pkl` file inside the `feedback` directory in the project root directory.
+1. Make sure that the expert model is [downloaded](#downloading-the-expert-model), and run `poetry run generate_feedback` to generate data to train the feedback models. If successful, this will create a `.pkl` file inside the `feedback` directory in the project root directory.
 1. Run `poetry run train_reward` to train the reward model for the selected feedback. If successful, this will save the best reward model checkpoint in the `reward_model_checkpoints` directory suffixed by a random number. You will need to use this suffix to refer to this model in the next steps.
 1. Run `poetry run train_agent [model suffix]`, where `[model suffix]` is the random number generated in the previous step, to train the RL agent using the selected reward model.
+1. Run `poetry run tensorboard --logdir rl_logs` to follow the training progress of the agent in TensorBoard.
 
 #### Useful scripts
 
