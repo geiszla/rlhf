@@ -120,6 +120,8 @@ def generate_feedback(
     feedback: list[Feedback[ObservationT, ActionNumpyT]] = []
     model_count = 0
 
+    print("Generating feedback...")
+
     for file in os.listdir(checkpoints_path):
         if not re.search(f"{FEEDBACK_ID}_[0-9]", file):
             continue

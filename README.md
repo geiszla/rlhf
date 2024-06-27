@@ -42,6 +42,8 @@ You can run scripts specified in `pyproject.toml` with `poetry run <script name>
 
 ### Reproducing the results
 
+*Note: Some of the results are included in `reward_model_checkpoints` (trained reward models), `rl_checkpoints` (trained RL agents) and `rl_logs` (TensorBoard RL training logs).*
+
 1. Open `rlhf/common.py` and set/increment the `EXPERIMENT_NUMBER` and the `FEEDBACK_TYPE` for the experiment you want to run. The experiment number will be appended to the beginning of logs and output files.
    *Note: For changing the expert, some parts of scripts currently commented out are need to be added back in.*
 1. Log into Weights and Biases by running `poetry run wandb login`.
