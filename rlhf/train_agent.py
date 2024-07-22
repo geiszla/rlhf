@@ -1,8 +1,8 @@
 """Module for training an RL agent."""
 
 import sys
+import typing
 from os import path
-from typing import Literal, Union
 
 import matplotlib
 import numpy
@@ -17,7 +17,6 @@ from .common import (
     ALGORITHM,
     DEVICE,
     ENVIRONMENT_NAME,
-    FEEDBACK_TYPE,
     USE_SDE,
     checkpoints_path,
     cpu_count,
@@ -30,27 +29,34 @@ from .types import FeedbackType
 # Uncomment line below to use PyPlot with VSCode Tunnels
 matplotlib.use("agg")
 
+IS_EXPERT_REWARD = False
+tensorboard_path = path.join(script_path, "..", "rl_logs")
+
 if len(sys.argv) < 2:
-    raise ValueError("Give the reward model suffix as the first argument.")
+    raise ValueError("Give the reward model suffixes as the arguments to the program.")
 
 # Set feedback type to None to not use the custom reward model
-TRAINING_FEEDBACK_TYPE: Union[FeedbackType, Literal["expert"], None] = FEEDBACK_TYPE
-REWARD_MODEL_ID = get_reward_model_name(
-    sys.argv[1],
-    is_without_feedback=(
-        TRAINING_FEEDBACK_TYPE is None or TRAINING_FEEDBACK_TYPE == "expert"
-    ),
-)
 
-RUN_NAME = f"{REWARD_MODEL_ID}"
+reward_model_paths: list[str] = []
 
-tensorboard_path = path.join(script_path, "..", "rl_logs")
-reward_model_path = path.join(
-    script_path, "..", "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
-)
+for arg in sys.argv[1:]:
+    feedback_type, suffix = arg.split("-")
+    REWARD_MODEL_ID = get_reward_model_name(
+        suffix,
+        feedback_override=(
+            "without" if IS_EXPERT_REWARD else typing.cast(FeedbackType, feedback_type)
+        ),
+    )
+
+    reward_model_paths.append(
+        path.join(
+            script_path, "..", "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
+        )
+    )
+
+RUN_NAME = get_reward_model_name("-".join(sys.argv[1:]), feedback_override="without")
 
 output_path = path.join(checkpoints_path, RUN_NAME)
-
 
 random_generator = numpy.random.default_rng(0)
 
@@ -97,11 +103,16 @@ class CustomReward(RewardFn):
         """Initialize custom reward."""
         super().__init__()
 
-        if TRAINING_FEEDBACK_TYPE != "expert":
-            # pylint: disable=no-value-for-parameter
-            self.reward_model = LightningNetwork.load_from_checkpoint(
-                checkpoint_path=reward_model_path
-            )
+        self.reward_models: list[LightningNetwork] = []
+
+        if not IS_EXPERT_REWARD:
+            for reward_model_path in reward_model_paths:
+                # pylint: disable=no-value-for-parameter
+                self.reward_models.append(
+                    LightningNetwork.load_from_checkpoint(
+                        checkpoint_path=reward_model_path
+                    )
+                )
 
         self.rewards = []
         self.expert_rewards = []
@@ -116,7 +127,7 @@ class CustomReward(RewardFn):
     ) -> list:
         """Return reward given the current state."""
         with torch.no_grad():
-            if TRAINING_FEEDBACK_TYPE == "expert":
+            if IS_EXPERT_REWARD:
                 # PPO
                 # rewards = expert_model.policy.value_net(
                 #     expert_model.policy.mlp_extractor(
@@ -138,15 +149,20 @@ class CustomReward(RewardFn):
                     dim=1,
                 )[0]
             else:
-                rewards = self.reward_model(
-                    torch.cat(
-                        [
-                            torch.Tensor(state).to(DEVICE),
-                            torch.Tensor(actions).to(DEVICE),
-                        ],
-                        dim=1,
-                    )
-                ).squeeze(1)
+                rewards = torch.zeros(state.shape[0]).to(DEVICE)
+
+                for reward_model in self.reward_models:
+                    rewards += reward_model(
+                        torch.cat(
+                            [
+                                torch.Tensor(state).to(DEVICE),
+                                torch.Tensor(actions).to(DEVICE),
+                            ],
+                            dim=1,
+                        )
+                    ).squeeze(1)
+
+                rewards /= len(self.reward_models)
 
         # if self.counter > 0:
         #     with torch.no_grad():
@@ -199,7 +215,7 @@ def main():
 
     print("Run name:", RUN_NAME)
 
-    if TRAINING_FEEDBACK_TYPE is not None:
+    if not IS_EXPERT_REWARD:
         print("Reward model ID:", REWARD_MODEL_ID)
         environment = RewardVecEnvWrapper(environment, reward_fn=CustomReward())
 

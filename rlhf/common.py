@@ -11,7 +11,7 @@ from .types import FeedbackType
 
 # Set these two before each experiment
 EXPERIMENT_NUBMER = 9
-FEEDBACK_TYPE: FeedbackType = "corrective"
+FEEDBACK_TYPE: FeedbackType = "evaluative"
 
 # Additional configuration options
 ALGORITHM: Union[Literal["sac"], Literal["ppo"]] = "sac"
@@ -35,13 +35,24 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # Common functions
-def get_reward_model_name(postfix: int | str, is_without_feedback: bool = False):
+def get_reward_model_name(
+    postfix: int | str,
+    feedback_override: Union[FeedbackType, Literal["without"]] | None = None,
+):
     """Return the name of the trained reward model by the number postfix."""
     return "_".join(
         [
             MODEL_ID,
-            *([FEEDBACK_TYPE] if not is_without_feedback else []),
-            *(["diff"] if USE_REWARD_DIFFERENCE and not is_without_feedback else []),
+            *(
+                [feedback_override or FEEDBACK_TYPE]
+                if feedback_override != "without"
+                else []
+            ),
+            *(
+                ["diff"]
+                if USE_REWARD_DIFFERENCE and feedback_override != "without"
+                else []
+            ),
             str(postfix),
         ]
     )

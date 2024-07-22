@@ -49,7 +49,7 @@ You can run scripts specified in `pyproject.toml` with `poetry run <script name>
 1. Log into Weights and Biases by running `poetry run wandb login`.
 1. Make sure that the expert model is [downloaded](#downloading-the-expert-model), and run `poetry run generate_feedback` to generate data to train the feedback models. If successful, this will create a `.pkl` file inside the `feedback` directory in the project root directory.
 1. Run `poetry run train_reward` to train the reward model for the selected feedback. If successful, this will save the best reward model checkpoint in the `reward_model_checkpoints` directory suffixed by a random number. You will need to use this suffix to refer to this model in the next steps.
-1. Run `poetry run train_agent [model suffix]`, where `[model suffix]` is the random number generated in the previous step, to train the RL agent using the selected reward model.
+1. Run `poetry run train_agent [model suffixes]`, where `[model suffixes]` are the feedback types and corresponding random numbers generated in the previous step (e.g., `evaluative-1869 descriptive-5890`), to train the RL agent using the selected reward model. If multiple models are specified, they will be combined to predict the reward.
 1. Run `poetry run tensorboard --logdir rl_logs` to follow the training progress of the agent in TensorBoard.
 
 #### Useful scripts
