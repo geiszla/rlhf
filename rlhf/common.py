@@ -11,7 +11,7 @@ from .types import FeedbackType
 
 # Set these two before each experiment
 EXPERIMENT_NUBMER = 9
-FEEDBACK_TYPE: FeedbackType = "evaluative"
+FEEDBACK_TYPE: FeedbackType = "comparative"
 
 # Additional configuration options
 ALGORITHM: Union[Literal["sac"], Literal["ppo"]] = "sac"

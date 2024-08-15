@@ -264,7 +264,7 @@ def main():
         learning_rate=(
             1e-6
             if FEEDBACK_TYPE == "corrective"
-            else (1e-5 if FEEDBACK_TYPE == "comparative" else 2e-5)
+            else (5e-6 if FEEDBACK_TYPE == "comparative" else 2e-5)
         ),
     )
 

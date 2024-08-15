@@ -3,6 +3,7 @@
 import sys
 import typing
 from os import path
+from typing import Union
 
 import matplotlib
 import numpy
@@ -54,7 +55,9 @@ for arg in sys.argv[1:]:
         )
     )
 
-RUN_NAME = get_reward_model_name("-".join(sys.argv[1:]), feedback_override="without")
+RUN_NAME = get_reward_model_name(
+    f"{'-'.join(sys.argv[1:])}_standard", feedback_override="without"
+)
 
 output_path = path.join(checkpoints_path, RUN_NAME)
 
@@ -118,6 +121,10 @@ class CustomReward(RewardFn):
         self.expert_rewards = []
         self.counter = 0
 
+        # Variables for calculating a running mean
+        self.reward_mean: Union[torch.Tensor, None] = None
+        self.squared_distance_from_mean: Union[torch.Tensor, None] = None
+
     def __call__(
         self,
         state: numpy.ndarray,
@@ -149,10 +156,12 @@ class CustomReward(RewardFn):
                     dim=1,
                 )[0]
             else:
-                rewards = torch.zeros(state.shape[0]).to(DEVICE)
+                model_count = len(self.reward_models)
 
-                for reward_model in self.reward_models:
-                    rewards += reward_model(
+                rewards = torch.zeros(model_count, state.shape[0]).to(DEVICE)
+
+                for model_index, reward_model in enumerate(self.reward_models):
+                    rewards[model_index] = reward_model(
                         torch.cat(
                             [
                                 torch.Tensor(state).to(DEVICE),
@@ -162,7 +171,36 @@ class CustomReward(RewardFn):
                         )
                     ).squeeze(1)
 
-                rewards /= len(self.reward_models)
+                if self.reward_mean is None:
+                    self.reward_mean = torch.zeros(model_count).to(DEVICE)
+
+                if self.squared_distance_from_mean is None:
+                    self.squared_distance_from_mean = torch.zeros(model_count).to(
+                        DEVICE
+                    )
+
+                standard_deviation = torch.ones(model_count).to(DEVICE)
+                rewards = rewards.transpose(0, 1)
+
+                for environment_index, reward in enumerate(rewards):
+                    # Welford's algorithm for calculating running mean and variance
+                    self.counter += 1
+
+                    difference = reward - self.reward_mean
+                    self.reward_mean += difference / self.counter
+                    new_difference = reward - self.reward_mean
+                    self.squared_distance_from_mean += difference * new_difference
+
+                    if self.counter > 1:
+                        standard_deviation = torch.sqrt(
+                            self.squared_distance_from_mean / (self.counter - 1)
+                        )
+
+                    rewards[environment_index] = (
+                        reward - self.reward_mean
+                    ) / standard_deviation
+
+                rewards = torch.mean(rewards.transpose(0, 1), dim=0)
 
         # if self.counter > 0:
         #     with torch.no_grad():
