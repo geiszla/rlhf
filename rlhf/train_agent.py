@@ -17,6 +17,7 @@ from stable_baselines3.sac.sac import SAC
 from .common import (
     ALGORITHM,
     DEVICE,
+    ENSEMBLE_COUNT,
     ENVIRONMENT_NAME,
     USE_SDE,
     checkpoints_path,
@@ -42,6 +43,7 @@ reward_model_paths: list[str] = []
 
 for arg in sys.argv[1:]:
     feedback_type, suffix = arg.split("-")
+
     REWARD_MODEL_ID = get_reward_model_name(
         suffix,
         feedback_override=(
@@ -56,7 +58,7 @@ for arg in sys.argv[1:]:
     )
 
 RUN_NAME = get_reward_model_name(
-    f"{'-'.join(sys.argv[1:])}_standard", feedback_override="without"
+    f"{'-'.join(sys.argv[1:])}", feedback_override="without"
 )
 
 output_path = path.join(checkpoints_path, RUN_NAME)
@@ -125,6 +127,43 @@ class CustomReward(RewardFn):
         self.reward_mean: Union[torch.Tensor, None] = None
         self.squared_distance_from_mean: Union[torch.Tensor, None] = None
 
+    def standardize_rewards(self, rewards: torch.Tensor):
+        """
+        Calculate the rolling mean and standard deviation of the rewards.
+
+        Input should be a tensor of shape (batch_size, model_count).
+        """
+        model_count = len(self.reward_models)
+
+        if self.reward_mean is None:
+            self.reward_mean = torch.zeros(model_count).to(DEVICE)
+
+        if self.squared_distance_from_mean is None:
+            self.squared_distance_from_mean = torch.zeros(model_count).to(DEVICE)
+
+        standard_deviation = torch.ones(model_count).to(DEVICE)
+
+        for reward_index, reward in enumerate(rewards):
+            # Welford's algorithm for calculating running mean and variance
+            self.counter += 1
+
+            difference = reward - self.reward_mean
+            self.reward_mean += difference / self.counter
+            new_difference = reward - self.reward_mean
+            self.squared_distance_from_mean += difference * new_difference
+
+            if self.counter > 1:
+                standard_deviation = (
+                    self.squared_distance_from_mean / (self.counter - 1)
+                ).sqrt()
+
+            rewards[reward_index] = (reward - self.reward_mean) / standard_deviation
+
+        # TODO: try to standardize rewards using the final mean and standard deviation
+        # rewards = (rewards - self.reward_mean) / standard_deviation
+
+        return rewards
+
     def __call__(
         self,
         state: numpy.ndarray,
@@ -145,75 +184,85 @@ class CustomReward(RewardFn):
                 # )
 
                 # SAC
-                rewards = torch.min(
-                    torch.cat(
-                        expert_model.policy.critic_target(
-                            torch.from_numpy(state).to(DEVICE),
-                            torch.from_numpy(actions).to(DEVICE),
-                        ),
-                        dim=1,
-                    ),
+                rewards = (
+                    expert_model.policy.critic_target(
+                        torch.from_numpy(state).to(DEVICE),
+                        torch.from_numpy(actions).to(DEVICE),
+                    )
+                    .cat(dim=1)
+                    .min(dim=1)[0]
+                )
+            elif ENSEMBLE_COUNT > 1:
+                model_input = torch.cat(
+                    [
+                        torch.Tensor(state).to(DEVICE),
+                        torch.Tensor(actions).to(DEVICE),
+                    ],
                     dim=1,
-                )[0]
-            else:
-                model_count = len(self.reward_models)
+                )
 
-                rewards = torch.zeros(model_count, state.shape[0]).to(DEVICE)
+                rewards = torch.empty(
+                    state.shape[0], len(self.reward_models), ENSEMBLE_COUNT
+                ).to(DEVICE)
+
+                # Predict reward for all state-action pairs with each model in the ensemble
+                for input_index, single_input in enumerate(model_input):
+                    batched_input = single_input.tile((ENSEMBLE_COUNT, 1))
+
+                    for model_index, reward_model in enumerate(self.reward_models):
+                        rewards[input_index][model_index] = reward_model(
+                            batched_input
+                        ).squeeze(1)
+
+                # Standardize rewards using rolling mean and standard deviation calculated for
+                # a model across state-action pairs and ensemble members
+                rewards = self.standardize_rewards(
+                    rewards.transpose(1, 2).flatten(start_dim=0, end_dim=1)
+                )
+
+                # Reshape rewards back to (batch_size, model_count, ensemble_count)
+                rewards = rewards.reshape(
+                    (state.shape[0], ENSEMBLE_COUNT, len(self.reward_models)),
+                ).transpose(1, 2)
+
+                # Select the least uncertain reward model for each state-action pair
+                least_uncertain_index = rewards.std(dim=2).argmin(dim=1)
+
+                rewards = rewards[
+                    torch.arange(rewards.size(0)), least_uncertain_index
+                ].mean(dim=1)
+            else:
+                model_input = torch.cat(
+                    [
+                        torch.Tensor(state).to(DEVICE),
+                        torch.Tensor(actions).to(DEVICE),
+                    ],
+                    dim=1,
+                )
+
+                rewards = torch.empty(len(self.reward_models), state.shape[0]).to(
+                    DEVICE
+                )
 
                 for model_index, reward_model in enumerate(self.reward_models):
-                    rewards[model_index] = reward_model(
-                        torch.cat(
-                            [
-                                torch.Tensor(state).to(DEVICE),
-                                torch.Tensor(actions).to(DEVICE),
-                            ],
-                            dim=1,
-                        )
-                    ).squeeze(1)
+                    rewards[model_index] = reward_model(model_input).squeeze(1)
 
-                if self.reward_mean is None:
-                    self.reward_mean = torch.zeros(model_count).to(DEVICE)
-
-                if self.squared_distance_from_mean is None:
-                    self.squared_distance_from_mean = torch.zeros(model_count).to(
-                        DEVICE
-                    )
-
-                standard_deviation = torch.ones(model_count).to(DEVICE)
-                rewards = rewards.transpose(0, 1)
-
-                for environment_index, reward in enumerate(rewards):
-                    # Welford's algorithm for calculating running mean and variance
-                    self.counter += 1
-
-                    difference = reward - self.reward_mean
-                    self.reward_mean += difference / self.counter
-                    new_difference = reward - self.reward_mean
-                    self.squared_distance_from_mean += difference * new_difference
-
-                    if self.counter > 1:
-                        standard_deviation = torch.sqrt(
-                            self.squared_distance_from_mean / (self.counter - 1)
-                        )
-
-                    rewards[environment_index] = (
-                        reward - self.reward_mean
-                    ) / standard_deviation
-
-                rewards = torch.mean(rewards.transpose(0, 1), dim=0)
+                rewards = (
+                    self.standardize_rewards(rewards.transpose(0, 1))
+                    .transpose(0, 1)
+                    .mean(dim=0)
+                )
 
         # if self.counter > 0:
         #     with torch.no_grad():
-        #         expert_rewards = torch.min(
-        #             torch.cat(
-        #                 expert_model.policy.critic_target(
-        #                     torch.from_numpy(state).to(DEVICE),
-        #                     torch.from_numpy(actions).to(DEVICE),
-        #                 ),
-        #                 dim=1,
-        #             ),
-        #             dim=1,
-        #         )[0]
+        #         expert_rewards = (
+        #             expert_model.policy.critic_target(
+        #                 torch.from_numpy(state).to(DEVICE),
+        #                 torch.from_numpy(actions).to(DEVICE),
+        #             )
+        #             .cat(dim=1)
+        #             .min(dim=1)[0]
+        #         )
 
         #     self.rewards.append(rewards[0].cpu().numpy())
         #     self.expert_rewards.append(expert_rewards[0].cpu().numpy())

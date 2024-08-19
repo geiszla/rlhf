@@ -37,6 +37,7 @@ tensorboard = "^2.16.2"
 torch = "^2.2.1"
 wandb = "^0.16.6"
 moviepy = "^1.0.3"
+masksembles = {git = "http://github.com/nikitadurasov/masksembles"}
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.2.0"

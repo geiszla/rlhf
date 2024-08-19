@@ -2088,6 +2088,21 @@ files = [
 ]
 
 [[package]]
+name = "masksembles"
+version = "1.1"
+description = "Official implementation of Masksembles approach"
+optional = false
+python-versions = "*"
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "http://github.com/nikitadurasov/masksembles"
+reference = "HEAD"
+resolved_reference = "c5327a925164b4e93bbbbdbfa23fcc5e1d53d22e"
+
+[[package]]
 name = "matplotlib"
 version = "3.8.3"
 description = "Python plotting package"
@@ -5124,4 +5139,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.11"
-content-hash = "8904e1afbb135fe71971c6b3bed61d80141b44e35b37adb14801fb44ee81708c"
+content-hash = "19035b7c305e6c628445a170e1e6066b4dbb88c602d0d591d7420c1d29a00662"

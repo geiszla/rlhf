@@ -19,6 +19,7 @@ import wandb
 
 from .common import (
     ALGORITHM,
+    ENSEMBLE_COUNT,
     ENVIRONMENT_NAME,
     FEEDBACK_ID,
     FEEDBACK_TYPE,
@@ -181,10 +182,17 @@ def train_reward_model(
         shuffle=True,
         pin_memory=True,
         num_workers=cpu_count,
+        # Ensemble needs to have a batch size divisible by the ensemble count
+        drop_last=True,
     )
 
     val_loader = DataLoader(
-        val_set, batch_size=batch_size, pin_memory=True, num_workers=cpu_count
+        val_set,
+        batch_size=batch_size,
+        pin_memory=True,
+        num_workers=cpu_count,
+        # Ensemble needs to have a batch size divisible by the ensemble count
+        drop_last=True,
     )
 
     checkpoint_callback = ModelCheckpoint(
@@ -266,6 +274,7 @@ def main():
             if FEEDBACK_TYPE == "corrective"
             else (5e-6 if FEEDBACK_TYPE == "comparative" else 2e-5)
         ),
+        ensemble_count=ENSEMBLE_COUNT,
     )
 
     train_reward_model(reward_model, dataset, maximum_epochs=100, batch_size=4)

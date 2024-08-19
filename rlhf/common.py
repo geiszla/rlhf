@@ -10,14 +10,15 @@ import torch
 from .types import FeedbackType
 
 # Set these two before each experiment
-EXPERIMENT_NUBMER = 9
-FEEDBACK_TYPE: FeedbackType = "comparative"
+EXPERIMENT_NUBMER = 10
+FEEDBACK_TYPE: FeedbackType = "evaluative"
 
 # Additional configuration options
 ALGORITHM: Union[Literal["sac"], Literal["ppo"]] = "sac"
 ENVIRONMENT_NAME = "HalfCheetah-v3"
 USE_SDE = False
 USE_REWARD_DIFFERENCE = False
+ENSEMBLE_COUNT = 4
 
 STEPS_PER_CHECKPOINT = 10000
 
@@ -48,6 +49,7 @@ def get_reward_model_name(
                 if feedback_override != "without"
                 else []
             ),
+            *(["ens"] if ENSEMBLE_COUNT > 1 else []),
             *(
                 ["diff"]
                 if USE_REWARD_DIFFERENCE and feedback_override != "without"
