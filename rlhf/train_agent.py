@@ -1,11 +1,15 @@
 """Module for training an RL agent."""
 
+import argparse
+import os
 import sys
 import typing
 from os import path
+from pathlib import Path
 
 import matplotlib
 import numpy
+import pytorch_lightning as pl
 import torch
 from imitation.rewards.reward_function import RewardFn
 from imitation.rewards.reward_wrapper import RewardVecEnvWrapper
@@ -13,99 +17,36 @@ from imitation.util.util import make_vec_env
 from stable_baselines3.ppo.ppo import PPO
 from stable_baselines3.sac.sac import SAC
 
-from .common import (
-    ALGORITHM,
-    DEVICE,
-    ENVIRONMENT_NAME,
-    USE_SDE,
-    checkpoints_path,
-    cpu_count,
-    get_reward_model_name,
-    script_path,
-)
-from .networks import LightningNetwork
-from .types import FeedbackType
+from rlhf.common import get_reward_model_name
+from rlhf.datatypes import FeedbackType
+from rlhf.networks import LightningNetwork
 
 # Uncomment line below to use PyPlot with VSCode Tunnels
 matplotlib.use("agg")
 
-IS_EXPERT_REWARD = False
-tensorboard_path = path.join(script_path, "..", "rl_logs")
-
-if len(sys.argv) < 2:
-    raise ValueError("Give the reward model suffixes as the arguments to the program.")
-
-# Set feedback type to None to not use the custom reward model
-
-reward_model_paths: list[str] = []
-
-for arg in sys.argv[1:]:
-    feedback_type, suffix = arg.split("-")
-    REWARD_MODEL_ID = get_reward_model_name(
-        suffix,
-        feedback_override=(
-            "without" if IS_EXPERT_REWARD else typing.cast(FeedbackType, feedback_type)
-        ),
-    )
-
-    reward_model_paths.append(
-        path.join(
-            script_path, "..", "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt"
-        )
-    )
-
-RUN_NAME = get_reward_model_name("-".join(sys.argv[1:]), feedback_override="without")
-
-output_path = path.join(checkpoints_path, RUN_NAME)
-
 random_generator = numpy.random.default_rng(0)
-
-# if TRAINING_FEEDBACK_TYPE == "expert":
-# PPO
-# expert_model = PPO.load(
-#     path.join(
-#         script_path,
-#         "..",
-#         "experts",
-#         "ppo",
-#         "HalfCheetah-v3_1",
-#         "HalfCheetah-v3.zip",
-#     ),
-#     custom_objects={
-#         "learning_rate": 0.0,
-#         "lr_schedule": lambda _: 0.0,
-#         "clip_range": lambda _: 0.0,
-#     },
-# )
-
-# SAC
-expert_model = SAC.load(
-    path.join(
-        script_path,
-        "..",
-        "experts",
-        "sac",
-        "HalfCheetah-v3_1",
-        "HalfCheetah-v3.zip",
-    ),
-    custom_objects={
-        "learning_rate": 0.0,
-        "lr_schedule": lambda _: 0.0,
-        "clip_range": lambda _: 0.0,
-    },
-)
 
 
 class CustomReward(RewardFn):
     """Custom reward based on fine-tuned reward model."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        is_expert_reward: bool = False,
+        reward_model_paths: list[str] = [],
+        device: str = "cuda",
+        expert_model: typing.Optional[SAC | PPO] = None,
+    ):
         """Initialize custom reward."""
         super().__init__()
 
         self.reward_models: list[LightningNetwork] = []
+        self.is_expert_reward = is_expert_reward
+        self.reward_model_paths = reward_model_paths
+        self.device = device
+        self.expert_model = expert_model
 
-        if not IS_EXPERT_REWARD:
+        if not is_expert_reward:
             for reward_model_path in reward_model_paths:
                 # pylint: disable=no-value-for-parameter
                 self.reward_models.append(
@@ -127,36 +68,26 @@ class CustomReward(RewardFn):
     ) -> list:
         """Return reward given the current state."""
         with torch.no_grad():
-            if IS_EXPERT_REWARD:
-                # PPO
-                # rewards = expert_model.policy.value_net(
-                #     expert_model.policy.mlp_extractor(
-                #         expert_model.policy.extract_features(
-                #             torch.from_numpy(next_state).to(DEVICE)
-                #         )
-                #     )[0]
-                # )
-
-                # SAC
+            if self.is_expert_reward:
                 rewards = torch.min(
                     torch.cat(
-                        expert_model.policy.critic_target(
-                            torch.from_numpy(state).to(DEVICE),
-                            torch.from_numpy(actions).to(DEVICE),
+                        self.expert_model.policy.critic_target(  # type: ignore
+                            torch.from_numpy(state).to(self.device),
+                            torch.from_numpy(actions).to(self.device),
                         ),
                         dim=1,
                     ),
                     dim=1,
                 )[0]
             else:
-                rewards = torch.zeros(state.shape[0]).to(DEVICE)
+                rewards = torch.zeros(state.shape[0]).to(self.device)
 
                 for reward_model in self.reward_models:
                     rewards += reward_model(
                         torch.cat(
                             [
-                                torch.Tensor(state).to(DEVICE),
-                                torch.Tensor(actions).to(DEVICE),
+                                torch.Tensor(state).to(self.device),
+                                torch.Tensor(actions).to(self.device),
                             ],
                             dim=1,
                         )
@@ -164,77 +95,193 @@ class CustomReward(RewardFn):
 
                 rewards /= len(self.reward_models)
 
-        # if self.counter > 0:
-        #     with torch.no_grad():
-        #         expert_rewards = torch.min(
-        #             torch.cat(
-        #                 expert_model.policy.critic_target(
-        #                     torch.from_numpy(state).to(DEVICE),
-        #                     torch.from_numpy(actions).to(DEVICE),
-        #                 ),
-        #                 dim=1,
-        #             ),
-        #             dim=1,
-        #         )[0]
-
-        #     self.rewards.append(rewards[0].cpu().numpy())
-        #     self.expert_rewards.append(expert_rewards[0].cpu().numpy())
-
-        #     if len(self.rewards) >= 1000:
-        #         steps = range(1000)
-
-        #         pyplot.plot(steps, self.rewards, label="Reward model")
-        #         pyplot.plot(steps, self.expert_rewards, label="Expert value")
-        #         # pyplot.plot(steps, rewards, label="Ground truth rewards")
-
-        #         pyplot.xlabel("Steps")
-        #         pyplot.ylabel("Rewards")
-        #         pyplot.legend()
-
-        #         pyplot.savefig(
-        #             path.join(script_path, "..", "plots", "agent_training_start_output.png")
-        #         )
-
-        #         exit()
-
-        # self.counter += 1
-
         return rewards.cpu().numpy()
 
 
 def main():
     """Run RL agent training."""
+
+    script_path = Path(__file__).parents[1].resolve()
+    checkpoints_path = path.join(script_path, "rl_checkpoints")
+
+    cpu_count = os.cpu_count()
+    cpu_count = cpu_count if cpu_count is not None else 8
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument(
+        "--experiment", type=int, default=0, help="Experiment number"
+    )
+    arg_parser.add_argument(
+        "--feedback_type",
+        type=str,
+        default="evaluative",
+        help="Type of feedback to train the reward model",
+    )
+    arg_parser.add_argument(
+        "--algorithm",
+        type=str,
+        default="sac",
+        help="RL algorithm used to generate the feedback",
+    )
+    arg_parser.add_argument(
+        "--environment",
+        type=str,
+        default="HalfCheetah-v3",
+        help="Environment used to generate the feedback",
+    )
+    arg_parser.add_argument(
+        "--use-sde",
+        type=bool,
+        default=False,
+        help="Whether the RL algorithm used SDE",
+    )
+    arg_parser.add_argument(
+        "--use-reward-difference",
+        type=bool,
+        default=False,
+        help="Whether to use the reward difference",
+    )
+    arg_parser.add_argument(
+        "--steps-per-checkpoint",
+        type=int,
+        default=10000,
+        help="Number of steps per checkpoint",
+    )
+    arg_parser.add_argument(
+        "--use-expert-reward",
+        type=bool,
+        default=False,
+        help="Whether to use expert reward",
+    )
+    args = arg_parser.parse_args()
+
     # For PPO, the more environments there are, the more `num_timesteps` shifts
     # from `total_timesteps` (TODO: check this again)
     environment = make_vec_env(
-        ENVIRONMENT_NAME,
-        n_envs=cpu_count if ALGORITHM != "ppo" else 1,
+        args.environment,
+        n_envs=cpu_count if args.algorithm != "ppo" else 1,
         # n_envs=1,
         rng=random_generator,
     )
 
-    print("Run name:", RUN_NAME)
+    FEEDBACK_ID = "_".join(
+        [args.algorithm, args.environment, *(["sde"] if args.use_sde else [])]
+    )
+    MODEL_ID = f"#{args.experiment}_{FEEDBACK_ID}"
+
+    IS_EXPERT_REWARD = args.use_expert_reward
+    tensorboard_path = path.join(script_path, "rl_logs")
+
+    reward_model_paths: list[str] = []
+
+    # Select agent algorithm
+    if args.algorithm == "sac":
+        model_class = SAC
+    elif args.algorithm == "ppo":
+        model_class = PPO
+    else:
+        raise NotImplementedError(f"{args.algorithm} not implemented")
+
+    REWARD_MODEL_ID = get_reward_model_name(
+        MODEL_ID,
+        args.feedback_type,
+        args.use_reward_difference,
+        args.experiment,
+        feedback_override=(
+            "without"
+            if IS_EXPERT_REWARD
+            else typing.cast(FeedbackType, args.feedback_type)
+        ),
+    )
+
+    reward_model_paths.append(
+        path.join(script_path, "reward_model_checkpoints", f"{REWARD_MODEL_ID}.ckpt")
+    )
+
+    RUN_NAME = get_reward_model_name(
+        "-".join(sys.argv[1:]),
+        args.feedback_type,
+        args.use_reward_difference,
+        args.experiment,
+        feedback_override="without",
+    )
+
+    output_path = path.join(checkpoints_path, RUN_NAME)
+
+    # if TRAINING_FEEDBACK_TYPE == "expert":
+    # PPO
+    # expert_model = PPO.load(
+    #     path.join(
+    #         script_path,
+    #         "..",
+    #         "experts",
+    #         "ppo",
+    #         "HalfCheetah-v3_1",
+    #         "HalfCheetah-v3.zip",
+    #     ),
+    #     custom_objects={
+    #         "learning_rate": 0.0,
+    #         "lr_schedule": lambda _: 0.0,
+    #         "clip_range": lambda _: 0.0,
+    #     },
+    # )
+
+    # SAC
+    if IS_EXPERT_REWARD:
+        expert_model = model_class.load(
+            path.join(
+                script_path,
+                "experts",
+                args.algorithm,
+                f"{args.environment}_1",
+                f"{args.environment}.zip",
+            ),
+            custom_objects={
+                "learning_rate": 0.0,
+                "lr_schedule": lambda _: 0.0,
+                "clip_range": lambda _: 0.0,
+            },
+        )
+
+        environment = RewardVecEnvWrapper(
+            environment,
+            reward_fn=CustomReward(
+                is_expert_reward=IS_EXPERT_REWARD,
+                expert_model=expert_model,
+            ),
+        )
 
     if not IS_EXPERT_REWARD:
-        print("Reward model ID:", REWARD_MODEL_ID)
-        environment = RewardVecEnvWrapper(environment, reward_fn=CustomReward())
+
+        print("Reward model ID:", MODEL_ID)
+        environment = RewardVecEnvWrapper(
+            environment,
+            reward_fn=CustomReward(
+                is_expert_reward=IS_EXPERT_REWARD,
+                reward_model_paths=reward_model_paths,
+                device=DEVICE,
+                expert_model=expert_model,
+            ),
+        )
 
     print()
 
     # Select agent algorithm
-    if ALGORITHM == "sac":
+    if args.algorithm == "sac":
         model_class = SAC
-    elif ALGORITHM == "ppo":
+    elif args.algorithm == "ppo":
         model_class = PPO
     else:
-        raise NotImplementedError(f"{ALGORITHM} not implemented")
+        raise NotImplementedError(f"{args.algorithm} not implemented")
 
     model = model_class(
         "MlpPolicy",
         environment,
         # verbose=1,
         tensorboard_log=tensorboard_path,
-        use_sde=USE_SDE,
+        use_sde=args.use_sde,
         # gamma=0,
     )
 

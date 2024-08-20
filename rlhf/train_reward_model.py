@@ -1,6 +1,8 @@
 """Module for training a reward model from the generated feedback."""
 
+import argparse
 import math
+import os
 import pickle
 from os import path
 from pathlib import Path
@@ -16,24 +18,11 @@ from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, Dataset, random_split
 
 import wandb
+from rlhf.common import get_reward_model_name
+from rlhf.datatypes import Feedback, FeedbackType
+from rlhf.networks import LightningNetwork, calculate_mle_loss, calculate_mse_loss
 
-from .common import (
-    ALGORITHM,
-    ENVIRONMENT_NAME,
-    FEEDBACK_ID,
-    FEEDBACK_TYPE,
-    STEPS_PER_CHECKPOINT,
-    USE_REWARD_DIFFERENCE,
-    USE_SDE,
-    cpu_count,
-    get_reward_model_name,
-)
-from .networks import LightningNetwork, calculate_mle_loss, calculate_mse_loss
-from .types import Feedback, FeedbackType
-
-REWARD_MODEL_ID = get_reward_model_name(f"{randrange(1000, 10000)}")
-
-script_path = Path(__file__).parent.resolve()
+script_path = Path(__file__).parents[1].resolve()
 
 # Utilize Tensor Cores of NVIDIA GPUs
 torch.set_float32_matmul_precision("high")
@@ -42,7 +31,13 @@ torch.set_float32_matmul_precision("high")
 class FeedbackDataset(Dataset):
     """PyTorch Dataset for loading the feedback data."""
 
-    def __init__(self, dataset_path: str, feedback_type: FeedbackType):
+    def __init__(
+        self,
+        dataset_path: str,
+        feedback_type: FeedbackType,
+        use_reward_difference: bool,
+        steps_per_checkpoint: int,
+    ):
         """Initialize dataset."""
         print("Loading dataset...")
 
@@ -50,7 +45,7 @@ class FeedbackDataset(Dataset):
             feedback_list: list[Feedback] = pickle.load(feedback_file)
 
         expert_value_key = (
-            "expert_value" if not USE_REWARD_DIFFERENCE else "expert_value_difference"
+            "expert_value" if not use_reward_difference else "expert_value_difference"
         )
 
         match feedback_type:
@@ -90,7 +85,7 @@ class FeedbackDataset(Dataset):
                 self.first, self.second = zip(*observation_pairs)
             case "corrective" | "demonstrative":
                 demonstrative_length = (
-                    STEPS_PER_CHECKPOINT if feedback_type == "demonstrative" else None
+                    steps_per_checkpoint if feedback_type == "demonstrative" else None
                 )
 
                 # First: Expert's observation, Second: Agent's observation
@@ -161,14 +156,29 @@ class FeedbackDataset(Dataset):
 
 def train_reward_model(
     reward_model: LightningModule,
+    reward_model_id: str,
+    feedback_type: FeedbackType,
+    use_reward_difference: bool,
     dataset: FeedbackDataset,
     maximum_epochs: int,
     batch_size: int,
+    cpu_count: int = 4,
+    algorithm: str = "sac",
+    environment: str = "HalfCheetah-v3",
+    use_sde: bool = False,
     gradient_clip_value: Union[float, None] = None,
     split_ratio: float = 0.8,
     enable_progress_bar=True,
     callback: Union[Callback, None] = None,
 ):
+
+    get_reward_model_name(
+        reward_model_id,
+        feedback_type,
+        use_reward_difference,
+        f"{randrange(1000, 10000)}",
+    )
+
     """Train a reward model given trajectories data."""
     training_set_size = math.floor(split_ratio * len(dataset))
     train_set, val_set = random_split(
@@ -189,20 +199,20 @@ def train_reward_model(
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=path.join(script_path, "..", "reward_model_checkpoints"),
-        filename=REWARD_MODEL_ID,
+        filename=reward_model_id,
         monitor="val_loss",
     )
 
     # initialise the wandb logger and name your wandb project
-    wandb_logger = WandbLogger(project="Masters Thesis", name=REWARD_MODEL_ID)
+    wandb_logger = WandbLogger(project="Multi-Feedback-RLHF", name=reward_model_id)
 
     # add your batch size to the wandb config
     wandb_logger.experiment.config.update(
         {
-            "rl_algorithm": ALGORITHM,
-            "rl_environment": ENVIRONMENT_NAME,
-            "rl_is_use_sde": USE_SDE,
-            "rl_feedback_type": FEEDBACK_TYPE,
+            "rl_algorithm": algorithm,
+            "rl_environment": environment,
+            "rl_is_use_sde": use_sde,
+            "rl_feedback_type": feedback_type,
             "max_epochs": maximum_epochs,
             "batch_size": batch_size,
             "gradient_clip_value": gradient_clip_value,
@@ -231,20 +241,69 @@ def train_reward_model(
 
 
 def main():
-    """Run reward model training."""
-    print("Feedback ID:", FEEDBACK_ID)
-    print("Model ID:", REWARD_MODEL_ID)
-    print()
+
+    cpu_count = os.cpu_count()
+    cpu_count = cpu_count if cpu_count is not None else 8
+
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument(
+        "--experiment", type=int, default=0, help="Experiment number"
+    )
+    arg_parser.add_argument(
+        "--feedback_type",
+        type=str,
+        default="evaluative",
+        help="Type of feedback to train the reward model",
+    )
+    arg_parser.add_argument(
+        "--algorithm",
+        type=str,
+        default="sac",
+        help="RL algorithm used to generate the feedback",
+    )
+    arg_parser.add_argument(
+        "--environment",
+        type=str,
+        default="HalfCheetah-v3",
+        help="Environment used to generate the feedback",
+    )
+    arg_parser.add_argument(
+        "--use-sde",
+        type=bool,
+        default=False,
+        help="Whether the RL algorithm used SDE",
+    )
+    arg_parser.add_argument(
+        "--use-reward-difference",
+        type=bool,
+        default=False,
+        help="Whether to use the reward difference",
+    )
+    arg_parser.add_argument(
+        "--steps-per-checkpoint",
+        type=int,
+        default=10000,
+        help="Number of steps per checkpoint",
+    )
+    args = arg_parser.parse_args()
+
+    FEEDBACK_ID = "_".join(
+        [args.algorithm, args.environment, *(["sde"] if args.use_sde else [])]
+    )
+    MODEL_ID = f"#{args.experiment}_{FEEDBACK_ID}"
 
     # Load data
     dataset = FeedbackDataset(
-        path.join(script_path, "..", "feedback", f"{FEEDBACK_ID}.pkl"), FEEDBACK_TYPE
+        path.join(script_path, "feedback", f"{FEEDBACK_ID}.pkl"),
+        args.feedback_type,
+        args.use_reward_difference,
+        args.steps_per_checkpoint,
     )
 
     # Select loss function based on feedback type
     loss_function = None
 
-    match FEEDBACK_TYPE:
+    match args.feedback_type:
         case "evaluative" | "descriptive":
             loss_function = calculate_mse_loss
         case "comparative" | "corrective" | "demonstrative":
@@ -263,12 +322,22 @@ def main():
         loss_function=loss_function,
         learning_rate=(
             1e-6
-            if FEEDBACK_TYPE == "corrective"
-            else (1e-5 if FEEDBACK_TYPE == "comparative" else 2e-5)
+            if args.feedback_type == "corrective"
+            else (1e-5 if args.feedback_type == "comparative" else 2e-5)
         ),
     )
 
-    train_reward_model(reward_model, dataset, maximum_epochs=100, batch_size=4)
+    train_reward_model(
+        reward_model,
+        MODEL_ID,
+        args.feedback_type,
+        args.use_reward_difference,
+        dataset,
+        maximum_epochs=100,
+        batch_size=4,
+        split_ratio=0.5,
+        cpu_count=cpu_count,
+    )
 
 
 if __name__ == "__main__":
