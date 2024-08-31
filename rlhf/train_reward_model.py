@@ -126,12 +126,11 @@ class FeedbackDataset(Dataset):
                         )
                     )
                 )
-
-                standard_deviations = numpy.std(model_inputs, axis=0)
+                standard_deviation = model_inputs.std(axis=0)
 
                 for index, feedback in enumerate(feedback_list):
                     perturbations = numpy.random.normal(
-                        0, standard_deviations, model_inputs.shape[-1]
+                        0, standard_deviation, model_inputs.shape[-1]
                     )
 
                     perturbations[feedback["expert_value_attributions"] > 0] = 0

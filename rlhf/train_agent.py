@@ -28,11 +28,13 @@ from .common import (
 from .networks import LightningNetwork
 from .types import FeedbackType
 
+SEEDS = [1337, 42, 69, 420]
+SEED = SEEDS[0]
+
 # Uncomment line below to use PyPlot with VSCode Tunnels
 matplotlib.use("agg")
 
 IS_EXPERT_REWARD = False
-tensorboard_path = path.join(script_path, "..", "rl_logs")
 
 if len(sys.argv) < 2:
     raise ValueError("Give the reward model suffixes as the arguments to the program.")
@@ -61,9 +63,10 @@ RUN_NAME = get_reward_model_name(
     f"{'-'.join(sys.argv[1:])}", feedback_override="without"
 )
 
+tensorboard_path = path.join(script_path, "..", "rl_logs", RUN_NAME)
 output_path = path.join(checkpoints_path, RUN_NAME)
 
-random_generator = numpy.random.default_rng(0)
+random_generator = numpy.random.default_rng(SEED)
 
 # if TRAINING_FEEDBACK_TYPE == "expert":
 # PPO
@@ -129,7 +132,7 @@ class CustomReward(RewardFn):
 
     def standardize_rewards(self, rewards: torch.Tensor):
         """
-        Calculate the rolling mean and standard deviation of the rewards.
+        Standradizes the input using the rolling mean and standard deviation of the rewards.
 
         Input should be a tensor of shape (batch_size, model_count).
         """
@@ -159,7 +162,8 @@ class CustomReward(RewardFn):
 
             rewards[reward_index] = (reward - self.reward_mean) / standard_deviation
 
-        # TODO: try to standardize rewards using the final mean and standard deviation
+        # Alternatively standardize rewards using the mean and standard deviation of
+        # the entire batch (usually performs worse)
         # rewards = (rewards - self.reward_mean) / standard_deviation
 
         return rewards
@@ -226,11 +230,19 @@ class CustomReward(RewardFn):
                 ).transpose(1, 2)
 
                 # Select the least uncertain reward model for each state-action pair
-                least_uncertain_index = rewards.std(dim=2).argmin(dim=1)
+                # least_uncertain_index = rewards.std(dim=2).argmin(dim=1)
 
-                rewards = rewards[
-                    torch.arange(rewards.size(0)), least_uncertain_index
-                ].mean(dim=1)
+                # rewards = rewards[
+                #     torch.arange(rewards.size(0)), least_uncertain_index
+                # ].mean(dim=1)
+
+                # Alternatively, weight the reward predictions by the inverse of the
+                # standard deviation of the models
+                inverse_standard_deviations = 1 / rewards.std(dim=2)
+
+                rewards = (inverse_standard_deviations * rewards.mean(dim=2)).sum(
+                    dim=1
+                ) / inverse_standard_deviations.sum(dim=1)
             else:
                 model_input = torch.cat(
                     [
@@ -252,6 +264,8 @@ class CustomReward(RewardFn):
                     .transpose(0, 1)
                     .mean(dim=0)
                 )
+
+                # rewards = rewards.mean(dim=0)
 
         # if self.counter > 0:
         #     with torch.no_grad():
@@ -335,13 +349,13 @@ def main():
         trained_model = model.learn(
             total_timesteps=steps_per_iteration * (iteration_count + 1) - timesteps,
             reset_num_timesteps=False,
-            tb_log_name=RUN_NAME,
+            tb_log_name=str(SEED),
         )
 
         timesteps = trained_model.num_timesteps
         print(f"{timesteps}/{steps_per_iteration * iterations} steps done")
 
-        model.save(f"{output_path}_{timesteps}")
+        # model.save(f"{output_path}_{timesteps}")
 
 
 if __name__ == "__main__":
